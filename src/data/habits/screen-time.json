@@ -1,0 +1,31 @@
+{
+  "id": "screen-time",
+  "name": "Screen Time Detox",
+  "emoji": "\ud83d\udcf5",
+  "description": "Reduce doomscrolling; reclaim focus.",
+  "microhabits": [
+    {
+      "id": "chargeroff",
+      "text": "Charge phone outside bedroom"
+    },
+    {
+      "id": "no-morning",
+      "text": "No phone 30 min after wake"
+    },
+    {
+      "id": "winddown",
+      "text": "Phone off 30 min before bed"
+    }
+  ],
+  "cues": [
+    {
+      "text": "Plug a charger in living room."
+    },
+    {
+      "text": "Set Focus mode for mornings."
+    },
+    {
+      "text": "Use app blockers in the evening."
+    }
+  ]
+}

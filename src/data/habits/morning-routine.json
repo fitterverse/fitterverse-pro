@@ -1,0 +1,34 @@
+{
+  "id": "morning-routine",
+  "name": "Morning Routine",
+  "emoji": "\ud83c\udf05",
+  "description": "Keystone routine to set the tone for the day.",
+  "microhabits": [
+    {
+      "id": "water",
+      "text": "Drink water",
+      "why": "Dehydration feels like fatigue."
+    },
+    {
+      "id": "light",
+      "text": "Get sunlight",
+      "why": "Reset circadian rhythm."
+    },
+    {
+      "id": "top1",
+      "text": "Write your Top-1",
+      "why": "Clarity beats motivation."
+    }
+  ],
+  "cues": [
+    {
+      "text": "Place a glass next to the bed."
+    },
+    {
+      "text": "Open curtains first thing."
+    },
+    {
+      "text": "Notebook + pen on the table."
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "exercise",
+  "name": "Exercise Starter",
+  "emoji": "\ud83d\udcaa",
+  "description": "Build the identity of a mover.",
+  "microhabits": [
+    {
+      "id": "walk5",
+      "text": "5-min brisk walk"
+    },
+    {
+      "id": "mobility2",
+      "text": "2-min mobility"
+    },
+    {
+      "id": "log",
+      "text": "Log how you feel"
+    }
+  ],
+  "cues": [
+    {
+      "text": "Shoes by the door."
+    },
+    {
+      "text": "Calendar block after lunch."
+    },
+    {
+      "text": "Lay out clothes the night before."
+    }
+  ]
+}
