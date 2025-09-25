@@ -1,117 +1,115 @@
-import { create } from 'zustand'
-import { storage } from '../lib/storage'
-import { todayKey } from '../lib/time'
+// src/state/appStore.ts
+import { create } from "zustand";
+import { storage } from "../lib/storage";
+import { todayKey } from "../lib/time";
 
-export type HabitId = 'morning-routine' | 'screen-time' | 'exercise'
+// ---- Domain types ----
+export type HabitId =
+  | "morning-routine"
+  | "screen-time"
+  | "exercise"
+  | "workout"
+  | "eat-healthy"
+  | "walk-10k";
 
 export type Task = {
-  id: string
-  text: string
-  minutes?: number
-  tip?: string
-}
+  id: string;
+  text: string;
+  minutes?: number;
+  tip?: string;
+};
 
 export type DayPlan = {
-  date: string
-  tasks: Task[]
-  completed: Record<string, boolean> // taskId -> done
-}
+  date: string; // YYYY-MM-DD
+  tasks: Task[];
+  completed: Record<string, boolean>; // taskId -> done
+};
 
 export type UserProfile = {
-  name?: string
-  goal?: string
-  keystone?: HabitId | null
-}
+  name?: string;
+  goal?: string;
+  // ✅ add habitId to profile so onboarding can store it
+  habitId?: HabitId | null;
+};
 
+// ---- Store shape ----
 type AppState = {
-  profile: UserProfile
-  plan: Record<string, DayPlan> // dateKey -> plan
-  streak: number
-  activeHabit: HabitId | null
+  profile: UserProfile;
+  plans: Record<string, DayPlan>; // ✅ used by DailyChecklist
 
   // actions
-  setProfile: (u: Partial<UserProfile>) => void
-  setActiveHabit: (h: HabitId) => void
-  ensureToday: () => void
-  toggleTask: (dateKey: string, taskId: string) => void
-  resetAll: () => void
+  setProfile: (partial: Partial<UserProfile>) => void;
+  ensureTodayPlan: () => DayPlan;
+  toggleTask: (date: string, taskId: string) => void;
+};
+
+// ---- persistence helpers ----
+const KEY = "fv@state";
+
+function loadState(): Pick<AppState, "profile" | "plans"> {
+  // our storage.get requires a fallback; provide a safe default
+  return storage.get<Pick<AppState, "profile" | "plans">>(KEY, {
+    profile: { name: "", goal: "", habitId: null },
+    plans: {},
+  });
 }
 
-const KEY = 'fv@state'
+function saveState(s: Pick<AppState, "profile" | "plans">) {
+  storage.set(KEY, s);
+}
 
-const initial: Pick<AppState, 'profile' | 'plan' | 'streak' | 'activeHabit'> = storage.get(KEY, {
-  profile: { name: '', goal: '', keystone: null },
-  plan: {},
-  streak: 0,
-  activeHabit: null
-})
+// ---- initial data helpers ----
+function defaultTasksForToday(): Task[] {
+  return [
+    { id: "t1", text: "2-min stretch after waking" },
+    { id: "t2", text: "No phone at breakfast" },
+    { id: "t3", text: "10-min evening walk" },
+  ];
+}
 
-export const useApp = create<AppState>((set, get) => ({
-  ...initial,
+// ---- store ----
+export const useApp = create<AppState>((set, get) => {
+  const initial = loadState();
 
-  setProfile: (u) => set((s) => {
-    const profile = { ...s.profile, ...u }
-    const next = { ...s, profile }
-    storage.set(KEY, next)
-    return next
-  }),
+  return {
+    profile: initial.profile,
+    plans: initial.plans,
 
-  setActiveHabit: (h) => set((s) => {
-    const next = { ...s, activeHabit: h, profile: { ...s.profile, keystone: h } }
-    storage.set(KEY, next)
-    return next
-  }),
+    setProfile: (partial) =>
+      set((s) => {
+        const next = { ...s, profile: { ...s.profile, ...partial } };
+        saveState({ profile: next.profile, plans: next.plans });
+        return next;
+      }),
 
-  ensureToday: () => set((s) => {
-    const key = todayKey()
-    if (s.plan[key]) return s
-    // create a tiny starter plan when missing
-    const tasks = s.activeHabit === 'morning-routine'
-      ? [
-          { id: 'water', text: 'Drink a glass of water', minutes: 2, tip: 'Leave a glass on your nightstand.' },
-          { id: 'sun', text: '2 minutes sunlight', minutes: 2, tip: 'Open the window and breathe.' },
-          { id: 'plan', text: 'Write today’s top-1', minutes: 3, tip: 'One thing that makes today a win.' },
-        ]
-      : s.activeHabit === 'screen-time'
-      ? [
-          { id: 'no-phone', text: 'No phone 30 min after wake', tip: 'Put it to charge outside the bedroom.' },
-          { id: 'focus-block', text: 'One 20-min no-scroll block', minutes: 20, tip: 'Use app/site blockers.' },
-          { id: 'off-30', text: '30-min off before bed', tip: 'Set a bedtime focus mode.' }
-        ]
-      : [
-          { id: 'walk', text: '5-min brisk walk', minutes: 5, tip: 'Shoes by the door the night before.' },
-          { id: 'mobility', text: '2-min mobility', minutes: 2, tip: 'Hips + shoulders.' },
-          { id: 'log', text: 'Log how you feel', minutes: 1 }
-        ]
+    ensureTodayPlan: () => {
+      const s = get();
+      const key = todayKey(new Date());
+      const existing = s.plans[key];
+      if (existing) return existing;
 
-    const plan = { ...s.plan, [key]: { date: key, tasks, completed: {} } }
-    const next = { ...s, plan }
-    storage.set(KEY, next)
-    return next
-  }),
+      const created: DayPlan = {
+        date: key,
+        tasks: defaultTasksForToday(),
+        completed: {},
+      };
+      const plans = { ...s.plans, [key]: created };
+      const next = { ...s, plans };
+      saveState({ profile: next.profile, plans: next.plans });
+      set(next);
+      return created;
+    },
 
-  toggleTask: (dateKey, taskId) => set((s) => {
-    const day = s.plan[dateKey]
-    if (!day) return s
-    const completed = { ...day.completed, [taskId]: !day.completed[taskId] }
-    const allDoneBefore = Object.values(day.completed).length && Object.values(day.completed).every(Boolean)
-    const allDoneAfter = Object.values(completed).every(Boolean)
-    let streak = s.streak
-    if (!allDoneBefore && allDoneAfter) streak += 1
-    const plan = { ...s.plan, [dateKey]: { ...day, completed } }
-    const next = { ...s, plan, streak }
-    storage.set(KEY, next)
-    return next
-  }),
-
-  resetAll: () => {
-    const next = {
-      profile: { name: '', goal: '', keystone: null },
-      plan: {},
-      streak: 0,
-      activeHabit: null
-    }
-    storage.set(KEY, next)
-    set(next)
-  }
-}))
+    toggleTask: (date, taskId) =>
+      set((s) => {
+        const plan = s.plans[date];
+        if (!plan) return s;
+        const completed = { ...plan.completed, [taskId]: !plan.completed[taskId] };
+        const updated: DayPlan = { ...plan, completed };
+        const plans = { ...s.plans, [date]: updated };
+        const next = { ...s, plans };
+        saveState({ profile: next.profile, plans: next.plans });
+        return next;
+      }),
+  };
+});

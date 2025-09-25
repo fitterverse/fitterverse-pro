@@ -2,49 +2,62 @@
 import React from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { useApp, HabitId } from "../state/appStore";
+import { useApp } from "../state/appStore";
 
-const HABITS: { id: HabitId; label: string; desc: string; emoji: string }[] = [
-  { id: "morning-routine", label: "Morning routine", desc: "2–10 min anchor tasks to start your day right.", emoji: "🌅" },
-  { id: "screen-time", label: "Reduce screen time", desc: "Fewer doom-scroll loops, more focused blocks.", emoji: "📵" },
-  { id: "exercise", label: "Exercise", desc: "Build a consistent movement habit.", emoji: "💪" },
-];
+const HABITS = [
+  { id: "morning-routine", label: "Morning routine", emoji: "🌅" },
+  { id: "screen-time", label: "Reduce screen time", emoji: "📵" },
+  { id: "exercise", label: "Exercise daily", emoji: "💪" },
+  { id: "workout", label: "Workout plan", emoji: "🏋️" },
+  { id: "eat-healthy", label: "Eat a healthy diet", emoji: "🥗" },
+  { id: "walk-10k", label: "Walk 10k steps", emoji: "🚶‍♂️" },
+] as const;
 
 export default function Onboarding() {
-  const { profile, setProfile } = useApp();
-  const [selected, setSelected] = React.useState<HabitId | null>(profile.habitId ?? null);
+  const { profile, setProfile, ensureTodayPlan } = useApp();
+  const [selected, setSelected] = React.useState<string>(profile.habitId ?? "");
 
-  function continueNext() {
+  function next() {
     if (!selected) return;
-    setProfile({ ...profile, habitId: selected });
-    // navigate to next onboarding step or dashboard in your flow
+    // ✅ persist habitId on profile
+    setProfile({ habitId: selected as any });
+    // create today plan so dashboard has content
+    ensureTodayPlan();
+    // simple route-forward (replace with navigate if using react-router hooks)
+    window.location.href = "/dashboard";
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <div className="container mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-3xl font-bold mb-6">Choose your first habit</h1>
-
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid sm:grid-cols-2 gap-4">
         {HABITS.map((h) => (
           <button
             key={h.id}
             onClick={() => setSelected(h.id)}
-            className={`text-left ${selected === h.id ? "ring-2 ring-emerald-500" : ""}`}
+            className={`text-left rounded-xl border p-4 transition ${
+              selected === h.id ? "border-emerald-500 bg-emerald-500/10" : "border-slate-800 bg-slate-900"
+            }`}
           >
-            <Card>
-              <div className="text-3xl">{h.emoji}</div>
-              <div className="mt-3 font-semibold">{h.label}</div>
-              <div className="text-slate-400 text-sm">{h.desc}</div>
-            </Card>
+            <div className="text-2xl">{h.emoji}</div>
+            <div className="mt-2 font-semibold">{h.label}</div>
           </button>
         ))}
       </div>
 
-      <div className="mt-8">
-        <Button onClick={continueNext} disabled={!selected}>
-          Continue
-        </Button>
-      </div>
+      <Card className="mt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-slate-400">Selected</div>
+            <div className="font-semibold">
+              {selected ? HABITS.find((h) => h.id === selected)?.label : "—"}
+            </div>
+          </div>
+          <Button onClick={next} disabled={!selected}>
+            Start plan
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }
