@@ -10,7 +10,18 @@ import {
   ConfirmationResult,
   signOut,
   User,
+  setPersistence,
+  browserLocalPersistence,
 } from "firebase/auth";
+
+/**
+ * We set persistence once on module load so user sessions survive refreshes.
+ * If this ever throws (rare), we simply continue; onAuthStateChanged still runs.
+ */
+setPersistence(auth, browserLocalPersistence).catch(() => { /* no-op */ });
+
+// Ensure consistent SMS content (optional)
+auth.languageCode = "en";
 
 type AuthState = {
   user: User | null;
@@ -35,13 +46,36 @@ type AuthState = {
   logout: () => Promise<void>;
 };
 
-declare global {
-  interface Window {
-    _fvRecaptcha?: RecaptchaVerifier;
+/**
+ * We keep a single invisible reCAPTCHA instance around.
+ * If it fails (e.g., browser blocks), we fall back to a visible widget by
+ * switching size to 'normal' and rendering into #recaptcha-container.
+ */
+function ensureRecaptcha(): RecaptchaVerifier {
+  // @ts-expect-error: attach to window for reuse/debug
+  if (!window._fvRecaptcha) {
+    window._fvRecaptcha = new RecaptchaVerifier(auth, "recaptcha-container", {
+      size: "invisible", // best UX; Firebase will show challenges if needed
+      callback: () => {
+        // solved automatically for invisible; nothing to do here
+      },
+      "expired-callback": () => {
+        // Token expired; will be recreated next call
+        try {
+          // @ts-expect-error
+          window._fvRecaptcha?.clear();
+        } catch {}
+        // @ts-expect-error
+        window._fvRecaptcha = undefined;
+      },
+    });
   }
+  // @ts-expect-error
+  return window._fvRecaptcha as RecaptchaVerifier;
 }
 
 export const useAuth = create<AuthState>((set, get) => {
+  // Keep Zustand in sync with Firebase auth
   onAuthStateChanged(auth, (u) => set({ user: u }));
 
   return {
@@ -57,7 +91,7 @@ export const useAuth = create<AuthState>((set, get) => {
     openAuthModal: () => set({ showAuthModal: true, error: undefined }),
     closeAuthModal: () => set({ showAuthModal: false, error: undefined, otp: "" }),
 
-    // Google OAuth
+    // --- Google OAuth ---
     loginWithGoogle: async () => {
       try {
         set({ loading: true, error: undefined });
@@ -65,7 +99,11 @@ export const useAuth = create<AuthState>((set, get) => {
         await signInWithPopup(auth, provider);
         set({ showAuthModal: false });
       } catch (e: any) {
-        set({ error: e?.message ?? "Google sign-in failed" });
+        const msg =
+          e?.code === "auth/popup-blocked"
+            ? "Popup blocked by the browser. Please allow popups and try again."
+            : e?.message ?? "Google sign-in failed";
+        set({ error: msg });
       } finally {
         set({ loading: false });
       }
@@ -74,24 +112,40 @@ export const useAuth = create<AuthState>((set, get) => {
     setPhone: (v) => set({ phone: v }),
     setOtp: (v) => set({ otp: v }),
 
-    // Phone OTP — send
+    // --- Phone OTP (send) ---
     startPhoneSignIn: async () => {
       const { phone } = get();
-      if (!phone) {
+      if (!phone || !phone.trim().startsWith("+")) {
         set({ error: "Enter phone number incl. country code (e.g. +1…)" });
         return;
       }
+
       try {
         set({ loading: true, error: undefined });
 
-        if (!window._fvRecaptcha) {
-          window._fvRecaptcha = new RecaptchaVerifier(auth, "recaptcha-container", {
-            size: "invisible",
-          });
-        }
+        let verifier = ensureRecaptcha();
 
-        const confirmation = await signInWithPhoneNumber(auth, phone, window._fvRecaptcha);
-        set({ _confirmation: confirmation });
+        // Attempt invisible first; if it fails due to browser policy,
+        // recreate visibly as a fallback.
+        try {
+          const confirmation = await signInWithPhoneNumber(auth, phone.trim(), verifier);
+          set({ _confirmation: confirmation });
+          return;
+        } catch (e: any) {
+          // fallback to visible captcha
+          try {
+            // @ts-expect-error
+            window._fvRecaptcha?.clear?.();
+          } catch {}
+          // @ts-expect-error
+          window._fvRecaptcha = new RecaptchaVerifier(auth, "recaptcha-container", {
+            size: "normal",
+          });
+          // @ts-expect-error
+          verifier = window._fvRecaptcha;
+          const confirmation = await signInWithPhoneNumber(auth, phone.trim(), verifier);
+          set({ _confirmation: confirmation });
+        }
       } catch (e: any) {
         set({ error: e?.message ?? "Failed to send OTP" });
       } finally {
@@ -99,16 +153,16 @@ export const useAuth = create<AuthState>((set, get) => {
       }
     },
 
-    // Phone OTP — verify
+    // --- Phone OTP (verify) ---
     verifyOtp: async () => {
       const { _confirmation, otp } = get();
-      if (!_confirmation || !otp) {
+      if (!_confirmation || !otp || otp.trim().length < 4) {
         set({ error: "Enter the 6-digit code" });
         return;
       }
       try {
         set({ loading: true, error: undefined });
-        await _confirmation.confirm(otp);
+        await _confirmation.confirm(otp.trim());
         set({ showAuthModal: false, otp: "" });
       } catch (e: any) {
         set({ error: e?.message ?? "Invalid code" });
