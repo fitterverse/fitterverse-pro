@@ -1,51 +1,46 @@
 // src/App.tsx
 import React from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
-import MarketingNavbar from "./components/nav/MarketingNavbar";
-import AppNavbar from "./components/nav/AppNavbar";
+// global layout
+import Navbar from "./components/nav/MarketingNavbar";
 
+// main pages
 import Home from "./pages/Home";
 import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
-
-import AuthModal from "./components/AuthModal";
-
-function Layout({ children }: { children: React.ReactNode }) {
-  const { pathname } = useLocation();
-
-  // Marketing pages use the marketing navbar
-  const isMarketing =
-    pathname === "/" ||
-    pathname.startsWith("/about") ||
-    pathname.startsWith("/blog") ||
-    pathname.startsWith("/pricing");
-
-  return (
-    <div className="min-h-dvh bg-slate-950 text-slate-100">
-      {isMarketing ? <MarketingNavbar /> : <AppNavbar />}
-
-      {/* Mount once at root so any openAuth() shows this modal */}
-      <AuthModal />
-
-      {children}
-    </div>
-  );
-}
+import Blog from "./pages/Blog"; // ✅ new blog page
 
 export default function App() {
   return (
-    <Layout>
-      <Routes>
-        {/* Marketing */}
-        <Route path="/" element={<Home />} />
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+      {/* shared nav */}
+      <Navbar />
 
-        {/* App */}
-        <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/settings" element={<Settings />} />
-      </Routes>
-    </Layout>
+      {/* main content area */}
+      <main className="flex-1">
+        <Routes>
+          {/* marketing / public */}
+          <Route path="/" element={<Home />} />
+          <Route path="/blog" element={<Blog />} /> {/* ✅ blog index */}
+
+          {/* app flows */}
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/settings" element={<Settings />} />
+
+          {/* fallback */}
+          <Route
+            path="*"
+            element={
+              <div className="p-12 text-center text-slate-400">
+                404 — page not found
+              </div>
+            }
+          />
+        </Routes>
+      </main>
+    </div>
   );
 }
