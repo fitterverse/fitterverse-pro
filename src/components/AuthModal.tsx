@@ -1,247 +1,224 @@
 // src/components/AuthModal.tsx
-// -----------------------------------------------------------------------------
-// A polished, production-style auth modal with:
-//  - Prominent Google / Apple buttons with brand-appropriate styling
-//  - "Continue with phone" that expands inline to a focused OTP flow
-//  - Backdrop click + Esc to close
-//  - Clear error messaging and subtle trust copy
-//  - Uses your existing Zustand store and Firebase logic (no API changes)
-// -----------------------------------------------------------------------------
-
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useAuth } from "@/state/authStore";
-import Card from "./ui/Card";
-import Input from "./ui/Input";
-import Button from "./ui/Button";
+
+type AuthButtonProps = {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  bg?: string;
+  text?: string;
+  ring?: string;
+  hover?: string;
+  icon?: React.ReactNode;
+  dataTestId?: string;
+};
+
+function AuthButton({
+  children,
+  onClick,
+  disabled,
+  bg = "bg-slate-800",
+  text = "text-white",
+  ring = "ring-1 ring-slate-700",
+  hover = "hover:opacity-95",
+  icon,
+  dataTestId,
+}: AuthButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={dataTestId}
+      className={[
+        "w-full relative inline-flex items-center justify-center gap-3 rounded-xl px-4 py-3",
+        "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+        "disabled:opacity-60 disabled:cursor-not-allowed",
+        bg,
+        text,
+        ring,
+        hover,
+      ].join(" ")}
+    >
+      <span className="h-5 w-5">{icon}</span>
+      <span className="text-[15px] font-medium">{children}</span>
+    </button>
+  );
+}
+
+/** Brand icons (inline SVG = no extra deps) **/
+const GoogleIcon = (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+    <path
+      d="M12 11v3.6h5.1c-.2 1.4-1.5 4.1-5.1 4.1-3.1 0-5.7-2.6-5.7-5.7S8.9 7.3 12 7.3c1.8 0 3 .8 3.7 1.5l2.5-2.4C16.7 4.8 14.6 4 12 4 6.9 4 2.8 8.1 2.8 13.2S6.9 22.4 12 22.4c7 0 9.6-4.9 9.6-7.4 0-.5 0-.8-.1-1.2H12z"
+      fill="#fff"
+    />
+  </svg>
+);
+
+const MicrosoftIcon = (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+    <path fill="#f25022" d="M11 11H4V4h7z" />
+    <path fill="#7fba00" d="M20 11h-7V4h7z" />
+    <path fill="#00a4ef" d="M11 20H4v-7h7z" />
+    <path fill="#ffb900" d="M20 20h-7v-7h7z" />
+  </svg>
+);
+
+const AppleIcon = (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+    <path
+      fill="currentColor"
+      d="M16.365 12.56c-.02-2.236 1.825-3.306 1.91-3.356-1.04-1.52-2.654-1.727-3.224-1.75-1.37-.14-2.67.8-3.36.8-.69 0-1.77-.78-2.9-.76-1.49.02-2.86.87-3.62 2.22-1.54 2.69-.39 6.66 1.09 8.84.72 1.02 1.58 2.16 2.7 2.12 1.09-.04 1.5-.69 2.82-.69s1.7.69 2.88.67c1.19-.02 1.95-1.05 2.67-2.07.84-1.23 1.19-2.42 1.21-2.49-.03-.01-2.32-.89-2.33-3.47zM14.53 5.66c.6-.74 1.01-1.76.9-2.78-.87.03-1.93.57-2.56 1.31-.56.65-1.06 1.67-.93 2.66.99.08 1.99-.5 2.59-1.19z"
+    />
+  </svg>
+);
 
 export default function AuthModal() {
   const {
     showAuthModal,
     closeAuthModal,
     loginWithGoogle,
-    phone,
-    otp,
-    setPhone,
-    setOtp,
-    startPhoneSignIn,
-    verifyOtp,
+    loginWithMicrosoft,
+    loginWithApple,
     loading,
     error,
   } = useAuth();
 
-  // Local UI state for expanding/collapsing the phone flow
-  const [showPhone, setShowPhone] = React.useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // Close on Esc
-  React.useEffect(() => {
+  // Close on ESC
+  useEffect(() => {
     if (!showAuthModal) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeAuthModal();
-    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeAuthModal();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [showAuthModal, closeAuthModal]);
 
-  if (!showAuthModal) return null;
+  // Focus the first action on open
+  useEffect(() => {
+    if (showAuthModal && panelRef.current) {
+      const btn = panelRef.current.querySelector("button");
+      (btn as HTMLButtonElement | null)?.focus();
+    }
+  }, [showAuthModal]);
 
-  // Click backdrop to close (but ignore clicks inside the card)
-  const onBackdropClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
-    if (e.target === e.currentTarget) closeAuthModal();
-  };
+  if (!showAuthModal) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
-      onClick={onBackdropClick}
-      aria-modal="true"
+      aria-modal
       role="dialog"
-      aria-labelledby="auth-title"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-[2px]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) closeAuthModal();
+      }}
     >
-      {/* Invisible Recaptcha anchor for Firebase phone auth */}
-      <div id="recaptcha-container" />
-
-      <Card className="relative w-full max-w-md bg-slate-900 border-slate-700 shadow-2xl">
-        {/* Close button (top-right) */}
-        <button
-          onClick={closeAuthModal}
-          className="absolute right-3 top-3 rounded-md p-2 text-slate-400 hover:text-white hover:bg-slate-800/60"
-          aria-label="Close"
-        >
-          ×
-        </button>
-
+      {/* Panel */}
+      <div
+        ref={panelRef}
+        className={[
+          "w-[92%] max-w-md rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl",
+          "p-5 sm:p-6",
+          "transition-all duration-200 ease-out",
+          "opacity-100 scale-100",
+        ].join(" ")}
+      >
         {/* Header */}
-        <div className="px-6 pt-6 text-center">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-500/30">
-            {/* Simple FV monogram */}
-            <span className="font-extrabold text-emerald-400">FV</span>
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 shrink-0 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+            <span className="text-emerald-400 text-lg">▣</span>
           </div>
-          <h3 id="auth-title" className="text-lg font-semibold">
-            Continue to Fitterverse
-          </h3>
-          <p className="mt-1 text-sm text-slate-400">
-            Sign in to save progress and sync across devices.
-          </p>
+          <div className="flex-1">
+            <h3 className="text-base sm:text-lg font-semibold">
+              Continue to Fitterverse
+            </h3>
+            <p className="text-xs text-slate-400">
+              One account for progress, streaks, and your personal plan.
+            </p>
+          </div>
+          <button
+            aria-label="Close"
+            onClick={closeAuthModal}
+            className="text-slate-400 hover:text-white transition"
+          >
+            ✕
+          </button>
         </div>
 
-        {/* OAuth options */}
-        <div className="px-6 pt-5">
-          <button
+        {/* Actions */}
+        <div className="mt-4 space-y-2">
+          <AuthButton
             onClick={loginWithGoogle}
             disabled={loading}
-            className="group inline-flex w-full items-center justify-center gap-3 rounded-lg bg-white px-4 py-2.5 font-medium text-slate-900 ring-1 ring-black/10 transition hover:bg-white/90 disabled:opacity-70"
+            bg="bg-white"
+            text="text-slate-900"
+            ring="ring-1 ring-slate-200"
+            hover="hover:bg-white/95"
+            icon={GoogleIcon}
+            dataTestId="auth-google"
           >
-            <GoogleIcon />
             Continue with Google
-          </button>
+          </AuthButton>
 
-          <button
-            disabled // remove this once Apple is configured in Firebase
-            className="mt-2 inline-flex w-full items-center justify-center gap-3 rounded-lg bg-black px-4 py-2.5 font-medium text-white ring-1 ring-white/10 transition disabled:opacity-50"
-            title="Coming soon"
+          <AuthButton
+            onClick={loginWithMicrosoft}
+            disabled={loading}
+            bg="bg-[#2f2f2f]"
+            text="text-white"
+            ring="ring-1 ring-[#3b3b3b]"
+            hover="hover:bg-[#383838]"
+            icon={MicrosoftIcon}
+            dataTestId="auth-microsoft"
           >
-            <AppleIcon />
+            Continue with Microsoft (Outlook)
+          </AuthButton>
+
+          <AuthButton
+            onClick={loginWithApple}
+            disabled={loading}
+            bg="bg-black"
+            text="text-white"
+            ring="ring-1 ring-slate-800"
+            hover="hover:bg-black/90"
+            icon={AppleIcon}
+            dataTestId="auth-apple"
+          >
             Continue with Apple
-          </button>
+          </AuthButton>
         </div>
 
         {/* Divider */}
-        <div className="mx-6 my-5 flex items-center gap-3 text-xs text-slate-400">
+        <div className="my-4 flex items-center gap-3 text-[11px] text-slate-400">
           <div className="h-px flex-1 bg-slate-700" />
           or
           <div className="h-px flex-1 bg-slate-700" />
         </div>
 
-        {/* Phone option (collapsed by default) */}
-        <div className="px-6 pb-2">
-          {!showPhone ? (
-            <button
-              onClick={() => setShowPhone(true)}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-slate-100 transition hover:bg-slate-800/60"
-            >
-              <PhoneIcon />
-              Continue with phone
-            </button>
-          ) : (
-            <div className="space-y-3">
-              <div className="text-sm font-medium text-slate-200">Phone sign-in</div>
-              <Input
-                label="Phone (with country code)"
-                placeholder="+1 555 123 4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-
-              {/* Send + Verify row */}
-              <div className="grid grid-cols-5 gap-2">
-                <button
-                  onClick={startPhoneSignIn}
-                  disabled={loading}
-                  className="col-span-2 rounded-lg bg-emerald-500 px-3 py-2.5 font-semibold text-slate-900 transition hover:bg-emerald-400 disabled:opacity-60"
-                >
-                  {loading ? "Sending…" : "Send code"}
-                </button>
-
-                <div className="col-span-2">
-                  <Input
-                    label="Code"
-                    placeholder="123456"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                  />
-                </div>
-
-                <button
-                  onClick={verifyOtp}
-                  disabled={loading}
-                  className="col-span-1 rounded-lg bg-emerald-600 px-3 py-2.5 font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-60"
-                >
-                  Verify
-                </button>
-              </div>
-
-              <button
-                onClick={() => setShowPhone(false)}
-                className="text-sm text-slate-400 underline underline-offset-4 hover:text-slate-200"
-              >
-                Use another method
-              </button>
-            </div>
-          )}
+        {/* Guest link */}
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={closeAuthModal}
+            className="text-sm text-emerald-300 hover:text-emerald-200 underline underline-offset-4"
+          >
+            Continue as guest
+          </button>
+          <span className="text-[11px] text-slate-400">
+            Press <kbd className="px-1 py-0.5 bg-slate-800 rounded">Esc</kbd> to close
+          </span>
         </div>
 
-        {/* Error message */}
-        {error && (
-          <div className="px-6 pt-2">
-            <div className="rounded-lg border border-red-900/40 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-              {error}
-            </div>
-          </div>
+        {/* Footer */}
+        {!!error && (
+          <div className="mt-4 text-[13px] text-red-400">{error}</div>
         )}
-
-        {/* Trust / compliance copy */}
-        <div className="px-6 pb-6 pt-5">
-          <p className="text-center text-[11px] leading-5 text-slate-500">
-            By continuing, you agree to our{" "}
-            <a href="/legal/terms" className="text-slate-300 underline hover:text-white">
-              Terms
-            </a>{" "}
-            and{" "}
-            <a href="/legal/privacy" className="text-slate-300 underline hover:text-white">
-              Privacy Policy
-            </a>
-            . We never post without permission.
-          </p>
-        </div>
-      </Card>
+        <p className="mt-3 text-[11px] leading-5 text-slate-500">
+          By continuing, you agree to our Terms and acknowledge our Privacy Policy.
+          We never share your data.
+        </p>
+      </div>
     </div>
-  );
-}
-
-/* --- Inline brand icons (accessible, lightweight) ------------------------ */
-
-function GoogleIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5">
-      <path
-        fill="#EA4335"
-        d="M24 9.5c3.54 0 6.72 1.22 9.23 3.6l6.92-6.92C35.9 2.32 30.47 0 24 0 14.62 0 6.51 5.39 2.56 13.22l8.63 6.69C13.1 14.09 18.11 9.5 24 9.5z"
-      />
-      <path
-        fill="#4285F4"
-        d="M46.5 24.5c0-1.56-.14-3.05-.41-4.5H24v9h12.7c-.55 3-2.3 5.54-4.9 7.22l7.49 5.81C43.95 38.39 46.5 31.91 46.5 24.5z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M11.19 19.91l-8.63-6.69C1.13 16.01 0 19.86 0 24c0 4.1 1.12 7.92 3.09 11.2l8.79-6.8C10.97 26.62 10.5 25.35 10.5 24c0-1.06.25-2.07.69-3.09z"
-      />
-      <path
-        fill="#34A853"
-        d="M24 48c6.48 0 11.93-2.13 15.91-5.78l-7.49-5.81C30.67 37.78 27.53 39 24 39c-5.9 0-10.92-4.6-12.33-10.3l-8.79 6.8C6.84 42.63 14.72 48 24 48z"
-      />
-      <path fill="none" d="M0 0h48v48H0z" />
-    </svg>
-  );
-}
-
-function AppleIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 17 20" className="h-[18px] w-[18px]">
-      <path
-        fill="currentColor"
-        d="M13.545 10.87c-.02-2.18 1.785-3.23 1.866-3.28-1.02-1.49-2.6-1.69-3.16-1.72-1.35-.14-2.63.8-3.31.8-.68 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.58 2.19-1.53 2.67-.39 6.62 1.09 8.78.72 1.04 1.58 2.2 2.7 2.16 1.09-.04 1.5-.7 2.82-.7 1.32 0 1.69.7 2.86.68 1.18-.02 1.93-1.06 2.65-2.1.83-1.2 1.17-2.37 1.19-2.43-.03-.01-2.29-.88-2.31-3.6zM11.3 4.9c.6-.73 1-1.75.9-2.77-.87.04-1.94.58-2.57 1.31-.56.64-1.05 1.68-.92 2.67.98.08 1.98-.5 2.59-1.21z"
-      />
-    </svg>
-  );
-}
-
-function PhoneIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]">
-      <path
-        fill="currentColor"
-        d="M17 1H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2Zm-3 19h-4v-2h4v2Zm3-4H7V4h10v12Z"
-      />
-    </svg>
   );
 }
