@@ -15,21 +15,16 @@ import Blog from "@/pages/Blog";
 import HubPage from "@/pages/blog/HubPage";
 import PostPage from "@/pages/blog/PostPage";
 
-// ✅ use ESM import, not require()
 import { useAuth } from "@/state/authStore";
 
 export default function App() {
-  // Expose a safe global so non-Link CTAs can open the auth modal
   React.useEffect(() => {
     (window as any)._openAuth = () => {
       try {
         useAuth.getState().openAuthModal();
-      } catch {
-        /* no-op */
-      }
+      } catch {}
     };
     return () => {
-      // optional cleanup
       if ((window as any)._openAuth) delete (window as any)._openAuth;
     };
   }, []);
