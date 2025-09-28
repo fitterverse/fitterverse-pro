@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { auth } from "../lib/firebase";
 import {
   GoogleAuthProvider,
+  OAuthProvider, // <-- for Apple
   signInWithPopup,
   onAuthStateChanged,
   RecaptchaVerifier,
@@ -12,30 +13,40 @@ import {
   User,
 } from "firebase/auth";
 
-let recaptcha: RecaptchaVerifier | undefined;
-
 type AuthState = {
   user: User | null;
   showAuthModal: boolean;
 
+  // phone flow
   phone: string;
   otp: string;
   loading: boolean;
   error?: string;
   _confirmation?: ConfirmationResult;
 
+  // UI controls
   openAuthModal: () => void;
   closeAuthModal: () => void;
 
+  // OAuth
   loginWithGoogle: () => Promise<void>;
+  loginWithApple: () => Promise<void>; // <-- NEW
 
+  // Phone
   setPhone: (v: string) => void;
   setOtp: (v: string) => void;
   startPhoneSignIn: () => Promise<void>;
   verifyOtp: () => Promise<void>;
 
+  // misc
   logout: () => Promise<void>;
 };
+
+declare global {
+  interface Window {
+    _fvRecaptcha?: RecaptchaVerifier;
+  }
+}
 
 export const useAuth = create<AuthState>((set, get) => {
   onAuthStateChanged(auth, (u) => set({ user: u }));
@@ -51,9 +62,10 @@ export const useAuth = create<AuthState>((set, get) => {
     _confirmation: undefined,
 
     openAuthModal: () => set({ showAuthModal: true, error: undefined }),
-    closeAuthModal: () => set({ showAuthModal: false, error: undefined, otp: "" }),
+    closeAuthModal: () =>
+      set({ showAuthModal: false, error: undefined, otp: "" }),
 
-    // Google OAuth
+    // ---- OAuth: Google ----
     loginWithGoogle: async () => {
       try {
         set({ loading: true, error: undefined });
@@ -61,16 +73,43 @@ export const useAuth = create<AuthState>((set, get) => {
         await signInWithPopup(auth, provider);
         set({ showAuthModal: false });
       } catch (e: any) {
-        set({ error: e?.message ?? "Google sign-in failed" });
+        set({
+          error:
+            e?.message?.toString?.() ??
+            "Google sign-in failed. Please try again.",
+        });
       } finally {
         set({ loading: false });
       }
     },
 
+    // ---- OAuth: Apple ----
+    loginWithApple: async () => {
+      try {
+        set({ loading: true, error: undefined });
+        // Apple provider via Firebase
+        const provider = new OAuthProvider("apple.com");
+        // Request user name & email first sign-in (optional)
+        provider.addScope("email");
+        provider.addScope("name");
+        await signInWithPopup(auth, provider);
+        set({ showAuthModal: false });
+      } catch (e: any) {
+        // Friendly error for common “not configured” cases
+        const msg =
+          e?.code === "auth/operation-not-allowed"
+            ? "Apple sign-in isn’t fully configured yet."
+            : e?.message?.toString?.() ?? "Apple sign-in failed.";
+        set({ error: msg });
+      } finally {
+        set({ loading: false });
+      }
+    },
+
+    // ---- Phone: send code ----
     setPhone: (v) => set({ phone: v }),
     setOtp: (v) => set({ otp: v }),
 
-    // Phone OTP — send
     startPhoneSignIn: async () => {
       const { phone } = get();
       if (!phone) {
@@ -80,20 +119,26 @@ export const useAuth = create<AuthState>((set, get) => {
       try {
         set({ loading: true, error: undefined });
 
-        if (!recaptcha) {
-          recaptcha = new RecaptchaVerifier(auth, "recaptcha-container", { size: "invisible" });
+        if (!window._fvRecaptcha) {
+          window._fvRecaptcha = new RecaptchaVerifier(auth, "recaptcha-container", {
+            size: "invisible",
+          });
         }
 
-        const confirmation = await signInWithPhoneNumber(auth, phone, recaptcha);
+        const confirmation = await signInWithPhoneNumber(
+          auth,
+          phone,
+          window._fvRecaptcha
+        );
         set({ _confirmation: confirmation });
       } catch (e: any) {
-        set({ error: e?.message ?? "Failed to send OTP" });
+        set({ error: e?.message?.toString?.() ?? "Failed to send OTP" });
       } finally {
         set({ loading: false });
       }
     },
 
-    // Phone OTP — verify
+    // ---- Phone: verify ----
     verifyOtp: async () => {
       const { _confirmation, otp } = get();
       if (!_confirmation || !otp) {
@@ -105,7 +150,7 @@ export const useAuth = create<AuthState>((set, get) => {
         await _confirmation.confirm(otp);
         set({ showAuthModal: false, otp: "" });
       } catch (e: any) {
-        set({ error: e?.message ?? "Invalid code" });
+        set({ error: e?.message?.toString?.() ?? "Invalid code" });
       } finally {
         set({ loading: false });
       }
