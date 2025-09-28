@@ -2,45 +2,35 @@
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 
-// global layout
-import Navbar from "./components/nav/MarketingNavbar";
-
-// main pages
-import Home from "./pages/Home";
-import Onboarding from "./pages/Onboarding";
-import Dashboard from "./pages/Dashboard";
-import Settings from "./pages/Settings";
-import Blog from "./pages/Blog"; // ✅ new blog page
+import MarketingNavbar from "@/components/nav/MarketingNavbar";
+import Home from "@/pages/Home";
+import Dashboard from "@/pages/Dashboard";
+import Onboarding from "@/pages/Onboarding";
+import Settings from "@/pages/Settings";
+import BlogIndex from "@/pages/blog/BlogIndex";
+import HubPage from "@/pages/blog/HubPage";
+import PostPage from "@/pages/blog/PostPage";
+import AuthModal from "@/components/AuthModal";
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
-      {/* shared nav */}
-      <Navbar />
+    <>
+      <MarketingNavbar />
 
-      {/* main content area */}
-      <main className="flex-1">
-        <Routes>
-          {/* marketing / public */}
-          <Route path="/" element={<Home />} />
-          <Route path="/blog" element={<Blog />} /> {/* ✅ blog index */}
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/settings" element={<Settings />} />
 
-          {/* app flows */}
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/settings" element={<Settings />} />
+        {/* Blog */}
+        <Route path="/blog" element={<BlogIndex />} />
+        <Route path="/blog/:hubId" element={<HubPage />} />
+        <Route path="/blog/:hubId/:slug" element={<PostPage />} />
+      </Routes>
 
-          {/* fallback */}
-          <Route
-            path="*"
-            element={
-              <div className="p-12 text-center text-slate-400">
-                404 — page not found
-              </div>
-            }
-          />
-        </Routes>
-      </main>
-    </div>
+      {/* Auth modal lives once at the root, opened from anywhere */}
+      <AuthModal />
+    </>
   );
 }
