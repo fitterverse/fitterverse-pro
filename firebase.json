@@ -1,11 +1,9 @@
 {
   "hosting": {
+    "site": "fitterverse",
     "public": "dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": ["**/.*", "**/node_modules/**"],
     "cleanUrls": true,
-    "trailingSlash": false,
-    "rewrites": [
-      { "source": "**", "destination": "/index.html" }
-    ]
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
   }
 }

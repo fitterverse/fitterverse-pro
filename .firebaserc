@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "fitterverse"
-  }
+    "default": "fitterverse",
+    "npx firebase-tools@latest hosting:sites:list --project fitterverse": "fitterverse"
+  },
+  "targets": {},
+  "etags": {}
 }
