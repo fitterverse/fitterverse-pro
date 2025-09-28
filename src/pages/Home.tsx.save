@@ -1,0 +1,25 @@
+import React from "react";
+export default function Home() {
+  return (
+    <main style={{ padding: 24 }}>
+      <h1>Fitterverse — Home</h1>
+      <p>If you can read this, routing is working ✅</p>
+    </main>
+  );
+}
+import React from "react";
+
+export default function Home() {
+  return (
+    <main style={{ padding: 24 }}>
+      <h1>Fitterverse</h1>
+      <p>Welcome — the app is wired up.</p>
+      <p><a href="/onboarding">Start onboarding →</a></p>
+    </main>
+  );
+}
+
+
+npm run dev
+
+
