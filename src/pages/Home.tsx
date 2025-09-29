@@ -1,15 +1,11 @@
 // src/pages/Home.tsx
 import React from "react";
-import { useAuth } from "@/state/authStore";
+import { Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import { useAuth } from "@/state/authStore";
 
-/**
- * Mobile-first, conversion-focused landing page for Fitterverse.
- * - CTAs open the Auth modal (Google / Microsoft / Phone).
- * - Clear value prop + differentiators, social proof, and FAQs.
- * - Realistic imagery from /public/images (swap later as needed).
- */
 export default function Home() {
   const { openAuthModal } = useAuth();
 
@@ -21,373 +17,367 @@ export default function Home() {
   };
 
   return (
-    <div className="bg-slate-950 text-slate-100">
-      {/* ========== HERO ========== */}
-      <section className="px-4 sm:px-6 md:px-10 pt-16 md:pt-24 pb-10 md:pb-14 max-w-6xl mx-auto">
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Helmet>
+        <title>Fitterverse – Get fit by mastering one habit at a time</title>
+        <meta
+          name="description"
+          content="Build lasting fitness with tiny daily actions, flexible streaks, weekly reviews, and gentle AI nudges. No guilt. Just momentum."
+        />
+        <link rel="canonical" href="https://fitterverse.in/" />
+        {/* Basic Open Graph */}
+        <meta property="og:title" content="Fitterverse – Habit-first fitness" />
+        <meta
+          property="og:description"
+          content="Tiny actions → compounding progress. Join 5,000+ people building fitness the habit-first way."
+        />
+        <meta
+          property="og:image"
+          content="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop"
+        />
+        <meta property="og:type" content="website" />
+        {/* Simple JSON-LD for organization */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: "Fitterverse",
+            url: "https://fitterverse.in",
+            sameAs: [
+              "https://fitterverse.web.app",
+              "https://fitterverse.firebaseapp.com",
+            ],
+          })}
+        </script>
+      </Helmet>
+
+      {/* HERO */}
+      <section className="px-4 sm:px-6 md:px-10 pt-14 pb-10 md:pt-20 md:pb-16 max-w-6xl mx-auto">
         <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
           {/* Copy */}
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-              New • Behavior-science based
-            </div>
+            <span className="inline-flex items-center gap-2 rounded-full bg-teal-500/10 text-teal-300 px-3 py-1 text-xs font-medium ring-1 ring-teal-400/30">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-400" />
+              Behavior-science based
+            </span>
+
             <h1 className="mt-4 text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight">
               Get fit by{" "}
-              <span className="text-emerald-400">mastering one habit</span> at a
-              time.
+              <span className="bg-gradient-to-r from-teal-300 to-sky-300 bg-clip-text text-transparent">
+                mastering one habit
+              </span>{" "}
+              at a time.
             </h1>
+
             <p className="mt-4 text-slate-300 text-lg">
-              Fitterverse turns tiny actions into compounding progress with
-              flexible streaks, weekly reviews, and gentle AI nudges. No guilt.
-              No overwhelm. Just momentum.
+              Tiny daily actions, flexible streaks, weekly reviews, and gentle
+              AI nudges. No guilt. No overwhelm.{" "}
+              <span className="text-teal-400">Just momentum.</span>
             </p>
 
             <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
               <Button
                 onClick={handleOpenAuth}
-                className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-900"
+                className="w-full sm:w-auto bg-teal-500 hover:bg-teal-400 text-black"
               >
                 Get started free
               </Button>
+
               <a
-                href="#how"
-                className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 px-4 py-2.5 hover:bg-slate-900/60"
+                href="#how-it-works"
+                className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-slate-700 px-4 py-2.5 hover:border-slate-500"
               >
                 See how it works
               </a>
             </div>
 
-            <div className="mt-4 flex items-center gap-3 text-xs text-slate-400">
-              <Stars />
-              <span>4.9 satisfaction</span>
-              <span className="opacity-50">•</span>
-              <span>Backed by research</span>
-              <span className="opacity-50">•</span>
-              <span>No credit card</span>
-            </div>
+            <p className="mt-3 text-sm text-slate-400">
+              ⭐ 4.9/5 satisfaction • No credit card • Cancel anytime
+            </p>
           </div>
 
           {/* Visual */}
-          <div className="relative">
-            <div className="relative overflow-hidden rounded-2xl ring-1 ring-slate-800 shadow-2xl">
-              <img
-                src="/images/hero-phone.jpg"
-                alt="Focus on one habit — Fitterverse"
-                className="h-[420px] w-full object-cover"
-                loading="eager"
-              />
-            </div>
-
-            {/* Overlay mini card */}
-            <div className="absolute -bottom-6 left-4 right-4 hidden md:block">
-              <Card className="bg-slate-900/90 border-slate-800 shadow-xl">
-                <div className="p-4">
-                  <div className="text-xs uppercase tracking-wider text-slate-400">
-                    Today’s plan
-                  </div>
-                  <ul className="mt-2 space-y-2 text-sm">
-                    {[
-                      "2-min stretch after waking",
-                      "No phone at breakfast",
-                      "10-min walk after lunch",
-                    ].map((t) => (
-                      <li key={t} className="flex items-center gap-2">
-                        <span className="inline-block h-4 w-4 rounded border border-slate-600"></span>
-                        <span>{t}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </Card>
-            </div>
-          </div>
-        </div>
-
-        {/* Logos */}
-        <div className="mt-12 md:mt-16">
-          <p className="text-center text-xs uppercase tracking-[0.2em] text-slate-500 mb-4">
-            inspired by research / trusted by builders
-          </p>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-x-6 gap-y-4 opacity-70">
-            {[
-              "logo-mit.svg",
-              "logo-ibm.svg",
-              "logo-meta.svg",
-              "logo-ibm.svg",
-              "logo-meta.svg",
-              "logo-mit.svg",
-            ].map((l, i) => (
-              <img key={i} src={`/images/${l}`} alt="logo" className="h-8 mx-auto" />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ========== DIFFERENTIATORS ========== */}
-      <section id="why" className="border-t border-slate-800 bg-slate-900/40">
-        <div className="px-4 sm:px-6 md:px-10 py-12 md:py-16 max-w-6xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center">
-            Why most fitness apps fail — and{" "}
-            <span className="text-emerald-400">Fitterverse works</span>
-          </h2>
-
-          <div className="mt-8 grid md:grid-cols-3 gap-6">
-            {[
-              {
-                title: "One focus habit",
-                body:
-                  "Scattered trackers dilute effort. We go deep on one high-leverage habit ~66 days.",
-              },
-              {
-                title: "Weekly reviews",
-                body:
-                  "Less shame, more learning. Reflect weekly to adjust goals and celebrate wins.",
-              },
-              {
-                title: "Behavior design",
-                body:
-                  "If-then plans, environment tweaks, and friction removal baked into your flow.",
-              },
-            ].map((f) => (
-              <Card key={f.title} className="bg-slate-900 border-slate-800">
-                <div className="p-6">
-                  <h3 className="text-lg font-semibold">{f.title}</h3>
-                  <p className="mt-2 text-slate-300">{f.body}</p>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ========== HOW IT WORKS (4 steps) ========== */}
-      <section id="how" className="border-t border-slate-800">
-        <div className="px-4 sm:px-6 md:px-10 py-12 md:py-16 max-w-6xl mx-auto grid md:grid-cols-2 gap-8 md:gap-12 items-center">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold">How it works</h2>
-            <ol className="mt-5 space-y-4 text-slate-300">
-              <li>
-                <strong className="text-slate-100">1) Pick one habit</strong> — e.g., morning
-                routine, screen-time, workout, 10k steps, or eating better.
-              </li>
-              <li>
-                <strong className="text-slate-100">2) Personalize</strong> — set tiny baseline,
-                choose daily <em>or</em> weekly tracking, and create if-then plans.
-              </li>
-              <li>
-                <strong className="text-slate-100">3) Get nudges</strong> — flexible streaks,
-                reminders, and environment tips (no guilt trips).
-              </li>
-              <li>
-                <strong className="text-slate-100">4) Review weekly</strong> — a quick 3–5 min
-                check-in to adapt goals and keep momentum.
-              </li>
-            </ol>
-            <div className="mt-6">
-              <Button
-                onClick={handleOpenAuth}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-900"
-              >
-                Start your plan
-              </Button>
-            </div>
-          </div>
+            <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
+              <picture>
+                {/* A relevant, royalty-free hero image (Unsplash): workout + habit vibe */}
+                <source
+                  srcSet="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop"
+                  type="image/jpeg"
+                />
+                <img
+                  src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop"
+                  alt="Healthy habit routine—shoes, mat, and a simple plan"
+                  className="h-72 w-full object-cover md:h-[420px]"
+                  loading="eager"
+                />
+              </picture>
 
-          <div className="relative">
-            <div className="overflow-hidden rounded-2xl ring-1 ring-slate-800 shadow-2xl">
-              <img
-                src="/images/dashboard.jpg"
-                alt="Fitterverse progress and review"
-                className="h-[380px] w-full object-cover"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ========== COMPARISON (side-by-side) ========== */}
-      <section className="border-t border-slate-800 bg-slate-900/40">
-        <div className="px-4 sm:px-6 md:px-10 py-12 md:py-16 max-w-6xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center">
-            Not another tracker. A{" "}
-            <span className="text-emerald-400">change system</span>.
-          </h2>
-
-          <div className="mt-8 grid md:grid-cols-2 gap-6">
-            <Card className="bg-slate-900 border-slate-800">
-              <div className="p-6">
-                <h3 className="font-semibold">Typical apps</h3>
-                <ul className="mt-3 space-y-2 text-slate-300 text-sm">
-                  <li>• Big, unsustainable plans</li>
-                  <li>• Streak breaks — motivation dies</li>
-                  <li>• One-size-fits-all programs</li>
-                  <li>• Guilt-driven reminders</li>
-                </ul>
-              </div>
-            </Card>
-
-            <Card className="bg-slate-900 border-slate-800">
-              <div className="p-6">
-                <h3 className="font-semibold">Fitterverse</h3>
-                <ul className="mt-3 space-y-2 text-slate-300 text-sm">
-                  <li>• Tiny daily wins or weekly reviews (your choice)</li>
-                  <li>• Flexible streaks — miss a day, not your identity</li>
-                  <li>• If-then plans + environment design</li>
-                  <li>• Progress &gt; perfection</li>
-                </ul>
-                <Button
-                  onClick={handleOpenAuth}
-                  className="mt-5 bg-emerald-500 hover:bg-emerald-400 text-slate-900"
-                >
-                  Try it free
-                </Button>
-              </div>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* ========== SOCIAL PROOF (testimonials) ========== */}
-      <section className="border-t border-slate-800">
-        <div className="px-4 sm:px-6 md:px-10 py-12 md:py-16 max-w-6xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
-            Loved by consistency-seekers
-          </h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                img: "/images/ava-1.jpg",
-                quote:
-                  "My morning routine finally stuck. The weekly reviews keep me honest without stress.",
-                name: "Aarav Sharma",
-                role: "Product Manager",
-              },
-              {
-                img: "/images/ava-2.jpg",
-                quote:
-                  "Screen-time cravings dropped. The if-then plans were simple but powerful.",
-                name: "Maya Patel",
-                role: "Founder",
-              },
-              {
-                img: "/images/ava-3.jpg",
-                quote:
-                  "Tiny wins + one focus habit = sustainable progress. I’m all in.",
-                name: "Leo Martinez",
-                role: "Engineer",
-              },
-            ].map((t) => (
-              <Card key={t.name} className="bg-slate-900 border-slate-800">
-                <div className="p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <img
-                      src={t.img}
-                      alt={t.name}
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                    <div>
-                      <div className="font-semibold">{t.name}</div>
-                      <div className="text-xs text-slate-400">{t.role}</div>
+              {/* Overlay mini plan */}
+              <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
+                <Card className="bg-slate-900/85 backdrop-blur border-slate-800">
+                  <div className="p-4">
+                    <div className="text-xs uppercase tracking-wider text-slate-400">
+                      Today’s plan
                     </div>
+                    <ul className="mt-2 space-y-2 text-sm">
+                      <li className="flex items-center gap-2">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-400" />
+                        2-min stretch after waking
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-400" />
+                        No phone at breakfast
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-400" />
+                        10-min walk after lunch
+                      </li>
+                    </ul>
                   </div>
-                  <p className="text-slate-200">“{t.quote}”</p>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ========== “STILL UNSURE?” BAND ========== */}
-      <section className="border-t border-slate-800 bg-slate-900/40">
-        <div className="px-4 sm:px-6 md:px-10 py-10 md:py-14 max-w-6xl mx-auto">
-          <Card className="bg-slate-900 border-slate-800">
-            <div className="p-6 md:flex md:items-center md:justify-between">
-              <div>
-                <h3 className="text-xl font-semibold">Still unsure?</h3>
-                <p className="mt-2 text-slate-300">
-                  Start free. If Fitterverse doesn’t help in a week, walk away.
-                </p>
-              </div>
-              <div className="mt-4 md:mt-0">
-                <Button
-                  onClick={handleOpenAuth}
-                  className="bg-white text-slate-900 hover:bg-white/90"
-                >
-                  Start free
-                </Button>
-              </div>
+      {/* TRUST / STATS */}
+      <section className="px-4 sm:px-6 md:px-10 pb-4 md:pb-6 max-w-6xl mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
+          <Stat label="People transformed" value="5,000+" />
+          <Stat label="Avg. satisfaction" value="4.9/5" />
+          <Stat label="Countries" value="12+" />
+          <Stat label="30-day consistency" value="90%" />
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <section
+        id="how-it-works"
+        className="px-4 sm:px-6 md:px-10 py-10 md:py-14 max-w-6xl mx-auto"
+      >
+        <h2 className="text-2xl md:text-3xl font-bold">
+          How Fitterverse keeps you consistent
+        </h2>
+
+        <div className="mt-6 grid md:grid-cols-3 gap-6">
+          <Step
+            number="1"
+            title="Pick your focus"
+            text="Choose a simple outcome like ‘feel energized’ or ‘lose 3–5 kg’ and we’ll convert it into small identity-based habits."
+            icon="🎯"
+          />
+          <Step
+            number="2"
+            title="Get a tiny daily plan"
+            text="Start with 1–2 minute actions. Flexible streaks mean you can miss a day without losing your identity or rhythm."
+            icon="🧩"
+          />
+          <Step
+            number="3"
+            title="Track & review weekly"
+            text="A 3-minute weekly check-in calibrates your plan. Progress graphs keep you motivated without guilt."
+            icon="📈"
+          />
+        </div>
+
+        <div className="mt-8">
+          <Button
+            onClick={handleOpenAuth}
+            className="bg-teal-500 hover:bg-teal-400 text-black"
+          >
+            Start your first habit
+          </Button>
+        </div>
+      </section>
+
+      {/* SCIENCE / DIFFERENTIATION */}
+      <section className="px-4 sm:px-6 md:px-10 py-10 md:py-14 max-w-6xl mx-auto">
+        <h2 className="text-2xl md:text-3xl font-bold">
+          Why Fitterverse works (when other apps don’t)
+        </h2>
+
+        <div className="mt-6 grid md:grid-cols-3 gap-6">
+          <Card className="bg-slate-900/60 border-slate-800">
+            <div className="p-5">
+              <h3 className="font-semibold">Identity, not willpower</h3>
+              <p className="mt-2 text-slate-300 text-sm">
+                We design cues, environment and “if-then” plans, so showing up
+                becomes part of who you are—not a daily negotiation.
+              </p>
+            </div>
+          </Card>
+          <Card className="bg-slate-900/60 border-slate-800">
+            <div className="p-5">
+              <h3 className="font-semibold">Flexible streaks</h3>
+              <p className="mt-2 text-slate-300 text-sm">
+                Miss a day? You don’t lose your streak identity. Your chain
+                bends, not breaks—keeping motivation intact.
+              </p>
+            </div>
+          </Card>
+          <Card className="bg-slate-900/60 border-slate-800">
+            <div className="p-5">
+              <h3 className="font-semibold">Weekly reflection</h3>
+              <p className="mt-2 text-slate-300 text-sm">
+                A 3-minute weekly review helps you course-correct early, turning
+                tiny wins into compounding progress.
+              </p>
             </div>
           </Card>
         </div>
       </section>
 
-      {/* ========== FAQ ========== */}
-      <section className="border-t border-slate-800">
-        <div className="px-4 sm:px-6 md:px-10 py-12 md:py-16 max-w-6xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold">FAQs</h2>
-          <div className="mt-6 space-y-3">
-            <FAQ
-              q="Why only one habit?"
-              a="Focus compounds. Mastery is easier when you remove competing goals."
-            />
-            <FAQ
-              q="Daily tracking mandatory?"
-              a="No. Choose daily tracking or a simple weekly check-in — both work."
-            />
-            <FAQ
-              q="How much time does it take?"
-              a="Most actions are 2–10 minutes/day, plus a 3–5 minute weekly review."
-            />
-            <FAQ
-              q="Is it free?"
-              a="Early access is free while we iterate. Paid tiers later for coaching and analytics."
-            />
-          </div>
+      {/* TESTIMONIALS */}
+      <section className="px-4 sm:px-6 md:px-10 py-10 md:py-14 max-w-6xl mx-auto">
+        <h2 className="text-2xl md:text-3xl font-bold">
+          Loved by people who thought they “weren’t consistent”
+        </h2>
+
+        <div className="mt-6 grid md:grid-cols-3 gap-6">
+          <Testimonial
+            quote="I stopped yo-yo routines. Two 5-minute habits every morning got me walking again and sleeping better."
+            name="Tanvi S."
+            role="Product Manager"
+          />
+          <Testimonial
+            quote="The weekly review is magic. I finally see progress without guilt or all-or-nothing thinking."
+            name="Aman P."
+            role="Founder"
+          />
+          <Testimonial
+            quote="I was ‘too busy’ for workouts. Habit stacking + gentle nudges made it easy to show up daily."
+            name="Richa K."
+            role="Doctor & mom"
+          />
         </div>
       </section>
 
-      {/* ========== FINAL CTA ========== */}
-      <section className="border-t border-slate-800 bg-gradient-to-r from-emerald-500/10 via-emerald-400/10 to-emerald-500/10">
-        <div className="px-4 sm:px-6 md:px-10 py-12 text-center max-w-6xl mx-auto">
-          <h3 className="text-2xl md:text-3xl font-bold">
-            Ready to build your first habit?
-          </h3>
-          <p className="mt-2 text-slate-300">
-            No spam. No pressure. Just tiny wins that add up.
-          </p>
-          <div className="mt-6">
-            <Button
-              onClick={handleOpenAuth}
-              className="bg-emerald-500 hover:bg-emerald-400 text-slate-900"
-            >
-              Transform your habit
-            </Button>
-          </div>
+      {/* FAQ */}
+      <section className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
+        <h2 className="text-2xl md:text-3xl font-bold">FAQs</h2>
+        <div className="mt-6 space-y-3">
+          <FAQ
+            q="What if I miss a day?"
+            a="Nothing breaks. We use flexible streaks so you keep your identity streak while gently resuming the plan."
+          />
+          <FAQ
+            q="How is this different from typical fitness apps?"
+            a="We’re habit-first. Tiny actions, environment design, flexible streaks and weekly reflection—so consistency becomes easy."
+          />
+          <FAQ
+            q="Do I need equipment?"
+            a="No. You’ll start with actions that fit your life—walking, mobility, hydration, breathwork, simple strength."
+          />
+          <FAQ
+            q="Can I cancel anytime?"
+            a="Yes. Getting started is free and you can cancel anytime from settings."
+          />
         </div>
+
+        <div className="mt-8">
+          <Button
+            onClick={handleOpenAuth}
+            className="bg-teal-500 hover:bg-teal-400 text-black"
+          >
+            Get started free
+          </Button>
+        </div>
+
+        <p className="mt-3 text-sm text-slate-400">
+          Trusted by <span className="text-teal-300 font-semibold">5,000+</span>{" "}
+          people in <span className="text-teal-300 font-semibold">12+</span>{" "}
+          countries. <span className="text-teal-300 font-semibold">90%</span>{" "}
+          stick with habits past 30 days.
+        </p>
       </section>
     </div>
   );
 }
 
-/* ---------- Small helpers ---------- */
+/* ======== Small Presentational Helpers (local to this file) ======== */
 
-function Stars() {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <svg key={i} viewBox="0 0 20 20" className="h-4 w-4 fill-emerald-400">
-          <path d="M10 1.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L10 14.9 4.7 17.6l1-5.8L1.5 7.7l5.9-.9L10 1.5z" />
-        </svg>
-      ))}
-    </div>
+    <Card className="bg-slate-900/60 border-slate-800">
+      <div className="p-4 text-center">
+        <div className="text-2xl font-bold text-teal-300">{value}</div>
+        <div className="mt-1 text-xs text-slate-400">{label}</div>
+      </div>
+    </Card>
+  );
+}
+
+function Step({
+  number,
+  title,
+  text,
+  icon,
+}: {
+  number: string;
+  title: string;
+  text: string;
+  icon: string;
+}) {
+  return (
+    <Card className="bg-slate-900/60 border-slate-800">
+      <div className="p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500/15 ring-1 ring-teal-400/30">
+            <span className="text-xl">{icon}</span>
+          </div>
+          <div className="text-sm text-slate-400">Step {number}</div>
+        </div>
+        <h3 className="mt-3 font-semibold">{title}</h3>
+        <p className="mt-2 text-slate-300 text-sm">{text}</p>
+      </div>
+    </Card>
+  );
+}
+
+function Testimonial({
+  quote,
+  name,
+  role,
+}: {
+  quote: string;
+  name: string;
+  role: string;
+}) {
+  return (
+    <Card className="bg-slate-900/60 border-slate-800">
+      <div className="p-5">
+        <p className="text-slate-200">“{quote}”</p>
+        <div className="mt-4 flex items-center gap-3">
+          <img
+            src={`https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+              name
+            )}`}
+            alt={name}
+            className="h-9 w-9 rounded-full ring-1 ring-slate-700"
+            loading="lazy"
+          />
+          <div className="text-sm">
+            <div className="font-medium">{name}</div>
+            <div className="text-slate-400">{role}</div>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 
 function FAQ({ q, a }: { q: string; a: string }) {
   return (
-    <details className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-      <summary className="cursor-pointer font-semibold">{q}</summary>
-      <p className="mt-2 text-slate-300">{a}</p>
+    <details className="group rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+      <summary className="cursor-pointer list-none font-medium">
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-400" />
+          {q}
+        </span>
+      </summary>
+      <p className="mt-2 text-sm text-slate-300">{a}</p>
     </details>
   );
 }
