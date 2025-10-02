@@ -1,0 +1,24 @@
+/* src/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --card-bg: 15,23,42;
+  --card-border: 30,41,59;
+}
+
+/* Utility presets used across the app */
+.container { @apply mx-auto px-4; }
+
+.card { @apply rounded-2xl border border-slate-700/60 bg-slate-900/60 backdrop-blur p-4; }
+
+.btn { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium transition; }
+.btn-primary { @apply bg-brand text-white hover:bg-brand-dark active:scale-[.99]; }
+.btn-secondary { @apply bg-slate-800 text-slate-100 hover:bg-slate-700; }
+
+.input { @apply w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 outline-none focus:ring-2 focus:ring-brand; }
+
+.badge { @apply inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1 text-xs; }
+
+nav a.active { @apply text-brand; }

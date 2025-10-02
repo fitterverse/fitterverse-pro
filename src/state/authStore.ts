@@ -1,36 +1,39 @@
 // src/state/authStore.ts
 import { create } from "zustand";
-import { auth } from "@/lib/firebase";
+import app, { auth } from "@/lib/firebase";
 import {
   GoogleAuthProvider,
-  OAuthProvider,
-  RecaptchaVerifier,
   signInWithPopup,
-  signInWithPhoneNumber,
+  signInWithRedirect,
   onAuthStateChanged,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
   ConfirmationResult,
   signOut,
   User,
 } from "firebase/auth";
 
 type AuthState = {
+  // Firebase user + init gate (prevents UI from flashing the wrong route)
   user: User | null;
-  showAuthModal: boolean;
+  initDone: boolean;
 
-  phone: string;
-  otp: string;
+  // UI state
+  showAuthModal: boolean;
   loading: boolean;
   error?: string;
+
+  // phone flow
+  phone: string;
+  otp: string;
   _confirmation?: ConfirmationResult;
 
+  // actions
   openAuthModal: () => void;
   closeAuthModal: () => void;
 
   loginWithGoogle: () => Promise<void>;
-  loginWithApple: () => Promise<void>;
-
-  setPhone: (v: string) => void;
-  setOtp: (v: string) => void;
+  // loginWithApple: () => Promise<void>; // when you enable it later
   startPhoneSignIn: () => Promise<void>;
   verifyOtp: () => Promise<void>;
 
@@ -40,65 +43,73 @@ type AuthState = {
 declare global {
   interface Window {
     _fvRecaptcha?: RecaptchaVerifier;
+    _openAuth?: () => void; // used by non-Link CTAs
   }
 }
 
+// helper to read/write the “onboarded” flag
+export function onboardKeyFor(uid?: string | null) {
+  return uid ? `fv_onboarded_${uid}` : null;
+}
+
+export function getOnboarded(uid?: string | null): boolean {
+  const k = onboardKeyFor(uid);
+  if (!k) return false;
+  return localStorage.getItem(k) === "1";
+}
+export function setOnboarded(uid?: string | null) {
+  const k = onboardKeyFor(uid);
+  if (!k) return;
+  localStorage.setItem(k, "1");
+}
+
 export const useAuth = create<AuthState>((set, get) => {
-  onAuthStateChanged(auth, (u) => set({ user: u }));
+  // one-time init listener
+  onAuthStateChanged(auth, (u) => {
+    set({ user: u, initDone: true });
+  });
 
   return {
     user: null,
+    initDone: false,
+
     showAuthModal: false,
+    loading: false,
+    error: undefined,
 
     phone: "",
     otp: "",
-    loading: false,
-    error: undefined,
     _confirmation: undefined,
 
     openAuthModal: () => set({ showAuthModal: true, error: undefined }),
     closeAuthModal: () => set({ showAuthModal: false, error: undefined, otp: "" }),
 
-    // Google OAuth
+    // Google sign-in (popup). If Safari gives trouble, flip to signInWithRedirect.
     loginWithGoogle: async () => {
       try {
         set({ loading: true, error: undefined });
         const provider = new GoogleAuthProvider();
-        // provider.setCustomParameters({ prompt: "select_account" });
+
+        // Use popup by default:
         await signInWithPopup(auth, provider);
+
         set({ showAuthModal: false });
       } catch (e: any) {
+        // fallback: uncomment to try redirect for browsers blocking popups:
+        // const provider = new GoogleAuthProvider();
+        // await signInWithRedirect(auth, provider);
+
         set({ error: e?.message ?? "Google sign-in failed" });
       } finally {
         set({ loading: false });
       }
     },
 
-    // Apple OAuth (Firebase provider id: "apple.com")
-    loginWithApple: async () => {
-      try {
-        set({ loading: true, error: undefined });
-        const provider = new OAuthProvider("apple.com");
-        // You can request additional scopes if needed:
-        // provider.addScope("email");
-        // provider.addScope("name");
-        await signInWithPopup(auth, provider);
-        set({ showAuthModal: false });
-      } catch (e: any) {
-        set({ error: e?.message ?? "Apple sign-in failed" });
-      } finally {
-        set({ loading: false });
-      }
-    },
-
-    setPhone: (v) => set({ phone: v }),
-    setOtp: (v) => set({ otp: v }),
-
     // Phone OTP — send
     startPhoneSignIn: async () => {
       const { phone } = get();
       if (!phone) {
-        set({ error: "Enter phone number incl. country code (e.g. +91…)" });
+        set({ error: "Enter phone number incl. country code (e.g. +1…)" });
         return;
       }
       try {

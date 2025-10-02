@@ -1,30 +1,31 @@
 // src/lib/firebase.ts
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-// If you want Analytics later, use guarded import to avoid SSR/dev issues:
-// import { getAnalytics, isSupported } from "firebase/analytics";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  ...(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
-    ? { measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID }
-    : {}),
+  apiKey: "AIzaSyA-rMRXQ_iSvOF8NS-PcItEGh-iQ8U-kCs",
+  authDomain: "fitterverse.firebaseapp.com",
+  projectId: "fitterverse",
+  storageBucket: "fitterverse.firebasestorage.app",
+  messagingSenderId: "46698969942",
+  appId: "1:46698969942:web:982e736a4e2223cb9734f7",
+  measurementId: "G-BF77DDV8SD"
 };
 
-// Avoid re-initializing during Vite HMR
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+// avoid double init during Vite HMR
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
-// Auth (used by Google / Phone OTP)
+// optional analytics, non-blocking
+if (typeof window !== "undefined") {
+  (async () => {
+    try {
+      const { getAnalytics, isSupported } = await import("firebase/analytics");
+      if (await isSupported()) getAnalytics(app);
+    } catch {}
+  })();
+}
+
 export const auth = getAuth(app);
-
-// Optional: enable Analytics later if you want
-// if (import.meta.env.PROD && typeof window !== "undefined") {
-//   isSupported().then((ok) => {
-//     if (ok) getAnalytics(app);
-//   });
-// }
+export const db = getFirestore(app);
+export default app;

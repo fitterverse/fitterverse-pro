@@ -1,7 +1,6 @@
 // src/App.tsx
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import { HelmetProvider } from "react-helmet-async";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import MarketingNavbar from "@/components/nav/MarketingNavbar";
 import AuthModal from "@/components/AuthModal";
@@ -15,50 +14,76 @@ import Settings from "@/pages/Settings";
 import Blog from "@/pages/Blog";
 import HubPage from "@/pages/blog/HubPage";
 import PostPage from "@/pages/blog/PostPage";
-import { useAuth } from "@/state/authStore";
+import HabitDashboard from "@/pages/habits/HabitDashboard";
 
-export default function App() {
-  // expose a safe global to open auth from non-Link CTAs
+import { useAuth, getOnboarded } from "@/state/authStore";
+
+function AppShell() {
+  const { user, initDone } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   React.useEffect(() => {
     (window as any)._openAuth = () => {
-      try {
-        useAuth.getState().openAuthModal();
-      } catch {
-        /* no-op */
-      }
+      try { useAuth.getState().openAuthModal(); } catch {}
     };
-    return () => {
-      delete (window as any)._openAuth;
-    };
+    return () => { delete (window as any)._openAuth; };
   }, []);
 
-  return (
-    <HelmetProvider>
-      <div className="min-h-dvh bg-slate-950 text-slate-100">
-        <MarketingNavbar />
+  React.useEffect(() => {
+    if (!initDone) return;
 
-        <Routes>
-          {/* Marketing */}
-          <Route path="/" element={<Home />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/about" element={<About />} />
+    const path = location.pathname;
 
-          {/* Product */}
-          <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/settings" element={<Settings />} />
+    if (user && (path === "/" || path === "/about" || path === "/pricing" || path.startsWith("/blog"))) {
+      const dest = getOnboarded(user.uid) ? "/dashboard" : "/onboarding";
+      if (path !== dest) navigate(dest, { replace: true });
+      return;
+    }
 
-          {/* Blog */}
-          <Route path="/blog" element={<Blog />} />
-          <Route path="/blog/:hubId" element={<HubPage />} />
-          <Route path="/blog/:hubId/:slug" element={<PostPage />} />
+    if (!user && (path === "/dashboard" || path === "/settings" || path === "/onboarding" || path.startsWith("/habit/"))) {
+      navigate("/", { replace: true });
+    }
+  }, [initDone, user, location.pathname, navigate]);
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-
-        <AuthModal />
+  if (!initDone) {
+    return (
+      <div className="min-h-dvh grid place-items-center bg-slate-950 text-slate-300">
+        <div className="animate-pulse text-sm opacity-75">Loading…</div>
       </div>
-    </HelmetProvider>
+    );
+  }
+
+  return (
+    <div className="min-h-dvh bg-slate-950 text-slate-100">
+      <MarketingNavbar />
+
+      <Routes>
+        {/* Marketing */}
+        <Route path="/" element={<Home />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/about" element={<About />} />
+
+        {/* Product */}
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/habit/:habitId" element={<HabitDashboard />} />
+
+        {/* Blog */}
+        <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:hubId" element={<HubPage />} />
+        <Route path="/blog/:hubId/:slug" element={<PostPage />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      <AuthModal />
+    </div>
   );
+}
+
+export default function App() {
+  return <AppShell />;
 }
