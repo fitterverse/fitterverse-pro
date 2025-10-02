@@ -14,45 +14,47 @@ import Settings from "@/pages/Settings";
 import Blog from "@/pages/Blog";
 import HubPage from "@/pages/blog/HubPage";
 import PostPage from "@/pages/blog/PostPage";
-import HabitDashboard from "@/pages/habits/HabitDashboard";
 
-import { useAuth, getOnboarded } from "@/state/authStore";
+import { useAuth } from "@/state/authStore";
 
-function AppShell() {
-  const { user, initDone } = useAuth();
-  const location = useLocation();
+/**
+ * Helper: read "onboarded" flag from localStorage for a user.
+ * We set this to "1" after first habit is created in Onboarding.
+ */
+function isOnboarded(uid: string | undefined | null): boolean {
+  if (!uid) return false;
+  try {
+    return localStorage.getItem(`fv_onboarded_${uid}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export default function App() {
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
+  // On login, if user lands on "/" (or any marketing route),
+  // push them to the right product route based on onboarding.
   React.useEffect(() => {
-    (window as any)._openAuth = () => {
-      try { useAuth.getState().openAuthModal(); } catch {}
-    };
-    return () => { delete (window as any)._openAuth; };
-  }, []);
-
-  React.useEffect(() => {
-    if (!initDone) return;
+    if (!user) return;
 
     const path = location.pathname;
+    const onMarketing =
+      path === "/" ||
+      path === "/pricing" ||
+      path === "/about" ||
+      path.startsWith("/blog");
 
-    if (user && (path === "/" || path === "/about" || path === "/pricing" || path.startsWith("/blog"))) {
-      const dest = getOnboarded(user.uid) ? "/dashboard" : "/onboarding";
-      if (path !== dest) navigate(dest, { replace: true });
-      return;
+    if (onMarketing) {
+      if (isOnboarded(user.uid)) {
+        navigate("/dashboard", { replace: true });
+      } else {
+        navigate("/onboarding", { replace: true });
+      }
     }
-
-    if (!user && (path === "/dashboard" || path === "/settings" || path === "/onboarding" || path.startsWith("/habit/"))) {
-      navigate("/", { replace: true });
-    }
-  }, [initDone, user, location.pathname, navigate]);
-
-  if (!initDone) {
-    return (
-      <div className="min-h-dvh grid place-items-center bg-slate-950 text-slate-300">
-        <div className="animate-pulse text-sm opacity-75">Loading…</div>
-      </div>
-    );
-  }
+  }, [user, location.pathname, navigate]);
 
   return (
     <div className="min-h-dvh bg-slate-950 text-slate-100">
@@ -68,7 +70,6 @@ function AppShell() {
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/habit/:habitId" element={<HabitDashboard />} />
 
         {/* Blog */}
         <Route path="/blog" element={<Blog />} />
@@ -84,6 +85,3 @@ function AppShell() {
   );
 }
 
-export default function App() {
-  return <AppShell />;
-}

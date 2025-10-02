@@ -1,4 +1,3 @@
-// src/lib/firebase.ts
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -13,10 +12,10 @@ const firebaseConfig = {
   measurementId: "G-BF77DDV8SD"
 };
 
-// avoid double init during Vite HMR
+// avoid double init in Vite HMR
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
-// optional analytics, non-blocking
+// optional analytics (non-blocking)
 if (typeof window !== "undefined") {
   (async () => {
     try {

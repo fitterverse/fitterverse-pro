@@ -1,156 +1,162 @@
 // src/state/authStore.ts
 import { create } from "zustand";
-import app, { auth } from "@/lib/firebase";
 import {
   GoogleAuthProvider,
-  signInWithPopup,
-  signInWithRedirect,
-  onAuthStateChanged,
+  OAuthProvider,
   RecaptchaVerifier,
+  signInWithPopup,
   signInWithPhoneNumber,
-  ConfirmationResult,
+  onAuthStateChanged,
   signOut,
-  User,
+  type ConfirmationResult,
+  type User,
 } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 type AuthState = {
-  // Firebase user + init gate (prevents UI from flashing the wrong route)
+  // data
   user: User | null;
-  initDone: boolean;
-
-  // UI state
-  showAuthModal: boolean;
   loading: boolean;
-  error?: string;
+  error: string | null;
 
-  // phone flow
-  phone: string;
-  otp: string;
-  _confirmation?: ConfirmationResult;
-
-  // actions
+  // modal
+  showAuthModal: boolean;
   openAuthModal: () => void;
   closeAuthModal: () => void;
 
+  // oauth
   loginWithGoogle: () => Promise<void>;
-  // loginWithApple: () => Promise<void>; // when you enable it later
+  loginWithApple: () => Promise<void>;
+
+  // phone
+  phone: string;
+  otp: string;
+  setPhone: (v: string) => void;
+  setOtp: (v: string) => void;
   startPhoneSignIn: () => Promise<void>;
   verifyOtp: () => Promise<void>;
 
+  // misc
   logout: () => Promise<void>;
 };
 
-declare global {
-  interface Window {
-    _fvRecaptcha?: RecaptchaVerifier;
-    _openAuth?: () => void; // used by non-Link CTAs
-  }
-}
-
-// helper to read/write the “onboarded” flag
-export function onboardKeyFor(uid?: string | null) {
-  return uid ? `fv_onboarded_${uid}` : null;
-}
-
-export function getOnboarded(uid?: string | null): boolean {
-  const k = onboardKeyFor(uid);
-  if (!k) return false;
-  return localStorage.getItem(k) === "1";
-}
-export function setOnboarded(uid?: string | null) {
-  const k = onboardKeyFor(uid);
-  if (!k) return;
-  localStorage.setItem(k, "1");
-}
+let _confirmation: ConfirmationResult | null = null;
+let _recaptcha: RecaptchaVerifier | null = null;
 
 export const useAuth = create<AuthState>((set, get) => {
-  // one-time init listener
-  onAuthStateChanged(auth, (u) => {
-    set({ user: u, initDone: true });
-  });
+  // Keep auth state in sync
+  if (typeof window !== "undefined") {
+    onAuthStateChanged(auth, (user) => set({ user }));
+  }
+
+  const setLoading = (loading: boolean) => set({ loading });
+  const setError = (error: string | null) => set({ error });
 
   return {
     user: null,
-    initDone: false,
+    loading: false,
+    error: null,
 
     showAuthModal: false,
-    loading: false,
-    error: undefined,
+    openAuthModal: () => set({ showAuthModal: true }),
+    closeAuthModal: () =>
+      set({
+        showAuthModal: false,
+        error: null,
+        phone: "",
+        otp: "",
+      }),
 
-    phone: "",
-    otp: "",
-    _confirmation: undefined,
-
-    openAuthModal: () => set({ showAuthModal: true, error: undefined }),
-    closeAuthModal: () => set({ showAuthModal: false, error: undefined, otp: "" }),
-
-    // Google sign-in (popup). If Safari gives trouble, flip to signInWithRedirect.
-    loginWithGoogle: async () => {
+    async loginWithGoogle() {
       try {
-        set({ loading: true, error: undefined });
+        setLoading(true);
+        setError(null);
         const provider = new GoogleAuthProvider();
-
-        // Use popup by default:
         await signInWithPopup(auth, provider);
-
         set({ showAuthModal: false });
       } catch (e: any) {
-        // fallback: uncomment to try redirect for browsers blocking popups:
-        // const provider = new GoogleAuthProvider();
-        // await signInWithRedirect(auth, provider);
-
-        set({ error: e?.message ?? "Google sign-in failed" });
+        setError(e?.message ?? "Google sign-in failed");
       } finally {
-        set({ loading: false });
+        setLoading(false);
       }
     },
 
-    // Phone OTP — send
-    startPhoneSignIn: async () => {
-      const { phone } = get();
-      if (!phone) {
-        set({ error: "Enter phone number incl. country code (e.g. +1…)" });
-        return;
-      }
+    async loginWithApple() {
       try {
-        set({ loading: true, error: undefined });
+        setLoading(true);
+        setError(null);
+        const provider = new OAuthProvider("apple.com");
+        provider.addScope("email");
+        provider.addScope("name");
+        await signInWithPopup(auth, provider);
+        set({ showAuthModal: false });
+      } catch (e: any) {
+        setError(e?.message ?? "Apple sign-in failed");
+      } finally {
+        setLoading(false);
+      }
+    },
 
-        if (!window._fvRecaptcha) {
-          window._fvRecaptcha = new RecaptchaVerifier(auth, "recaptcha-container", {
+    phone: "",
+    otp: "",
+    setPhone: (v) => set({ phone: v }),
+    setOtp: (v) => set({ otp: v }),
+
+    async startPhoneSignIn() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const phone = get().phone?.trim();
+        if (!phone) throw new Error("Enter a valid phone number");
+
+        // Create / reuse invisible reCAPTCHA bound to <div id="recaptcha-container" />
+        if (!_recaptcha) {
+          _recaptcha = new RecaptchaVerifier(auth, "recaptcha-container", {
             size: "invisible",
           });
         }
 
-        const confirmation = await signInWithPhoneNumber(auth, phone, window._fvRecaptcha);
-        set({ _confirmation: confirmation });
+        _confirmation = await signInWithPhoneNumber(auth, phone, _recaptcha);
       } catch (e: any) {
-        set({ error: e?.message ?? "Failed to send OTP" });
+        setError(e?.message ?? "Could not send OTP");
+        // reset recaptcha so user can retry cleanly
+        try {
+          _recaptcha?.clear();
+        } catch {}
+        _recaptcha = null;
+        _confirmation = null;
+        throw e;
       } finally {
-        set({ loading: false });
+        setLoading(false);
       }
     },
 
-    // Phone OTP — verify
-    verifyOtp: async () => {
-      const { _confirmation, otp } = get();
-      if (!_confirmation || !otp) {
-        set({ error: "Enter the 6-digit code" });
-        return;
-      }
+    async verifyOtp() {
       try {
-        set({ loading: true, error: undefined });
-        await _confirmation.confirm(otp);
-        set({ showAuthModal: false, otp: "" });
+        setLoading(true);
+        setError(null);
+        const code = get().otp?.trim();
+        if (!_confirmation) throw new Error("Please request a code first");
+        if (!code || code.length < 6) throw new Error("Enter the 6-digit code");
+
+        await _confirmation.confirm(code);
+        set({ showAuthModal: false });
       } catch (e: any) {
-        set({ error: e?.message ?? "Invalid code" });
+        setError(e?.message ?? "Invalid code");
+        throw e;
       } finally {
-        set({ loading: false });
+        setLoading(false);
       }
     },
 
-    logout: async () => {
-      await signOut(auth);
-      set({ showAuthModal: false });
+    async logout() {
+      try {
+        setLoading(true);
+        await signOut(auth);
+      } finally {
+        setLoading(false);
+      }
     },
   };
 });

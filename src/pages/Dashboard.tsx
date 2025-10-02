@@ -7,10 +7,10 @@ import {
   query,
   where,
   orderBy,
-  Query,
-  FirestoreError,
+  type QueryDocumentSnapshot,
+  type DocumentData,
 } from "firebase/firestore";
-import { db, serverTimestampCompat } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { useAuth } from "@/state/authStore";
 import Card from "@/components/ui/Card";
 
@@ -27,48 +27,40 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [habits, setHabits] = useState<UserHabit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [indexWarn, setIndexWarn] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const handleAddHabit = () => navigate("/onboarding?mode=add");
 
   useEffect(() => {
-    if (!user) {
-      navigate("/", { replace: true });
-    }
+    if (!user) navigate("/", { replace: true });
   }, [user, navigate]);
 
   useEffect(() => {
     if (!user) return;
     setLoading(true);
     setErr(null);
-    setIndexWarn(null);
 
-    const q: Query = query(
+    // NOTE: Requires composite index on (uid asc, createdAt desc)
+    const q = query(
       collection(db, "user_habits"),
       where("uid", "==", user.uid),
       orderBy("createdAt", "desc")
     );
 
+    const mapDoc = (d: QueryDocumentSnapshot<DocumentData>): UserHabit => ({
+      id: d.id,
+      ...(d.data() as any),
+    });
+
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const rows: UserHabit[] = [];
-        snap.forEach((d) => rows.push({ id: d.id, ...(d.data() as any) }));
+        const rows = snap.docs.map(mapDoc);
         setHabits(rows);
         setLoading(false);
-        setErr(null);
-        setIndexWarn(null); // clear once index is live
       },
-      (e: FirestoreError) => {
-        // If the composite index is missing, Firestore throws failed-precondition.
-        if (e.code === "failed-precondition") {
-          setIndexWarn(
-            "Missing Firestore index. We’re temporarily sorting on the client. Create the index (uid ASC, createdAt DESC) for best performance."
-          );
-        } else {
-          setErr(e.message || "Failed to load habits");
-        }
+      (e) => {
+        setErr(e?.message || "Failed to load habits");
         setLoading(false);
       }
     );
@@ -88,25 +80,6 @@ export default function Dashboard() {
           Tap a habit to view progress, streaks, and reviews.
         </p>
 
-        {/* Optional, temporary banner if index is still building */}
-        {indexWarn && (
-          <Card className="bg-amber-500/10 border-amber-500/40 text-amber-200 p-4 mt-6">
-            <strong className="block mb-1">Missing Firestore index</strong>
-            <span className="text-sm">
-              {indexWarn} —{" "}
-              <a
-                href="https://console.firebase.google.com/v1/r/project/fitterverse/firestore/indexes?create_composite=Ck9wcm9qZWN0cy9maXR0ZXJ2ZXJzZS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvdXNlcl9oYWJpdHMvaW5kZXhlcy9fEAEaBwoDdWlkEAEaDQoJY3JlYXRlZEF0EAIaDAoIX19uYW1lX18QAg"
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2"
-              >
-                click here to create the index
-              </a>
-              , then refresh.
-            </span>
-          </Card>
-        )}
-
         <div className="grid md:grid-cols-3 gap-4 mt-6">
           {loading && (
             <Card className="bg-slate-900/60 border-slate-800 p-5 md:col-span-3">
@@ -125,7 +98,7 @@ export default function Dashboard() {
             <Card className="bg-slate-900/60 border-slate-800 p-5 md:col-span-3">
               <h3 className="font-semibold">No habits yet</h3>
               <p className="text-slate-300 mt-1 text-sm">
-                Use the + button to create your first habit.
+                Use the + button below to create your first habit.
               </p>
             </Card>
           )}
@@ -142,7 +115,7 @@ export default function Dashboard() {
                   <div>
                     <h3 className="font-semibold">{h.name}</h3>
                     <p className="text-slate-400 text-sm mt-1">
-                      Type: {String(h.type || "").replaceAll("_", " ")}
+                      Type: {String(h.type || "").split("_").join(" ")}
                     </p>
                   </div>
                   <span className="text-xs text-slate-400">View</span>
@@ -152,7 +125,7 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* Floating action button */}
+      {/* Floating action button (single CTA) */}
       <button
         onClick={handleAddHabit}
         className="fixed right-4 bottom-20 sm:right-6 sm:bottom-6 rounded-full bg-teal-500 hover:bg-teal-400 text-black px-6 py-4 text-lg font-semibold shadow-lg"

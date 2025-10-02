@@ -4,3 +4,7 @@ dist
 .env*
 !.env.example
 tsconfig.tsbuildinfo
+# Firebase service account keys
+*.json
+!package.json
+!tsconfig.json
