@@ -1,145 +1,97 @@
-/* scripts/generate-sitemap.ts
- * Generates /dist/sitemap.xml (and /public/sitemap.xml during dev) from:
- *  - Static marketing pages
- *  - Blog hubs and posts from src/content
- *
- * Usage:
- *   npm run sitemap
- *   (Also runs automatically before every build via "prebuild")
- */
+// scripts/generate-sitemap.ts
+/* eslint-disable no-console */
+import fs from "fs";
+import path from "path";
 
-import { mkdirSync, writeFileSync, existsSync, copyFileSync } from "fs";
-import { resolve } from "path";
+const SITE_URL = (process.env.SITE_URL || "https://fitterverse.in").replace(/\/+$/,"");
+const PUBLIC_DIR = path.resolve("public");
+const DIST_DIR = path.resolve("dist");
 
-// ---- Config ----
-const SITE_URL =
-  process.env.SITE_URL?.replace(/\/+$/, "") || "https://fitterverse.in";
-
-// Static pages you want indexed
-const STATIC_ROUTES: Array<{ loc: string; changefreq?: string; priority?: number }> = [
-  { loc: "/", changefreq: "weekly", priority: 0.9 },
-  { loc: "/pricing", changefreq: "monthly", priority: 0.7 },
-  { loc: "/about", changefreq: "yearly", priority: 0.5 },
-  { loc: "/blog", changefreq: "weekly", priority: 0.8 },
+// ---- Configure static routes you want in sitemap:
+const staticRoutes = [
+  "/", "/pricing", "/about", "/blog", "/faq"
 ];
 
-// Safe import of content module
-let hubs: any[] = [];
-let listPostsByHub: (hubId: string) => any[] = () => [];
-try {
-  // IMPORTANT: this path matches your project (src/content/index.ts)
-  // Vite/tsx can import TypeScript from src with path mapping “@” (tsconfig).
-  const content = await import("../src/content/index.ts");
-  hubs = Array.isArray(content.hubs) ? content.hubs : [];
-  listPostsByHub =
-    typeof content.listPostsByHub === "function" ? content.listPostsByHub : () => [];
-} catch (e) {
-  console.warn(
-    "[sitemap] Could not import content. Hubs/posts will be omitted. Error:",
-    (e as Error).message
-  );
+// ---- OPTIONAL: If you have a content directory, enumerate posts/hubs here.
+// For now we’ll accept injections via a JSON file if present.
+type ExtraRoute = { loc: string; lastmod?: string; priority?: number; changefreq?: string; };
+const extraJsonPath = path.resolve("scripts", "sitemap.extra.json"); // optional
+let extra: ExtraRoute[] = [];
+if (fs.existsSync(extraJsonPath)) {
+  try { extra = JSON.parse(fs.readFileSync(extraJsonPath, "utf-8")); } catch {}
 }
 
-// Build URL entries
-type UrlEntry = {
-  loc: string;
-  lastmod?: string;
-  changefreq?: string;
-  priority?: number;
-};
+type UrlEntry = { loc: string; lastmod?: string; priority?: string; changefreq?: string; };
 
-const urls: UrlEntry[] = [];
-
-// 1) Static pages
-for (const r of STATIC_ROUTES) {
-  urls.push({
-    loc: SITE_URL + r.loc,
-    changefreq: r.changefreq,
-    priority: r.priority,
-  });
+function iso(dt: number) {
+  return new Date(dt).toISOString();
 }
 
-// 2) Blog hubs
-for (const hub of hubs) {
-  const id = hub?.id || hub; // supports either object or string fallback
-  const hubPath = `/blog/${id}`;
-  urls.push({
-    loc: SITE_URL + hubPath,
-    changefreq: "weekly",
-    priority: 0.7,
-  });
+function guessLastModForRoute(route: string): string {
+  // Prefer public asset that belongs to the page if any; fallback to now
+  const indexHtml = path.resolve("index.html");
+  try {
+    const stat = fs.statSync(indexHtml);
+    return iso(stat.mtimeMs);
+  } catch {
+    return iso(Date.now());
+  }
+}
 
-  // 3) Posts within the hub
-  const posts = listPostsByHub(id) || [];
-  for (const p of posts) {
-    const slug: string = p?.slug;
-    if (!slug) continue;
-    const lastmod =
-      p?.date && !Number.isNaN(Date.parse(p.date))
-        ? new Date(p.date).toISOString()
-        : undefined;
+function buildUrlset(): UrlEntry[] {
+  const urls: UrlEntry[] = [];
 
+  staticRoutes.forEach((r) => {
     urls.push({
-      loc: SITE_URL + `${hubPath}/${slug}`,
-      lastmod,
-      changefreq: "monthly",
-      priority: 0.6,
+      loc: `${SITE_URL}${r}`,
+      lastmod: guessLastModForRoute(r),
+      changefreq: r === "/" ? "daily" : "weekly",
+      priority: r === "/" ? "1.0" : "0.8",
     });
-  }
+  });
+
+  extra.forEach((e) => {
+    urls.push({
+      loc: e.loc.startsWith("http") ? e.loc : `${SITE_URL}${e.loc}`,
+      lastmod: e.lastmod || iso(Date.now()),
+      changefreq: e.changefreq || "weekly",
+      priority: e.priority ? String(e.priority) : "0.7",
+    });
+  });
+
+  return urls;
 }
 
-// XML builder
-function escapeXml(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function renderXml(urls: UrlEntry[]) {
+  const nodes = urls.map(u => `
+  <url>
+    <loc>${u.loc}</loc>
+    ${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ""}
+    ${u.changefreq ? `<changefreq>${u.changefreq}</changefreq>` : ""}
+    ${u.priority ? `<priority>${u.priority}</priority>` : ""}
+  </url>`).join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${nodes}
+</urlset>`;
 }
 
-const xml =
-  `<?xml version="1.0" encoding="UTF-8"?>\n` +
-  `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-  urls
-    .map((u) => {
-      const loc = `<loc>${escapeXml(u.loc)}</loc>`;
-      const lastmod = u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : "";
-      const changefreq = u.changefreq ? `<changefreq>${u.changefreq}</changefreq>` : "";
-      const priority =
-        typeof u.priority === "number" ? `<priority>${u.priority.toFixed(1)}</priority>` : "";
-      return `  <url>${loc}${lastmod}${changefreq}${priority}</url>`;
-    })
-    .join("\n") +
-  `\n</urlset>\n`;
-
-// Ensure output exists and write
-const distDir = resolve(process.cwd(), "dist");
-if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
-const distSitemap = resolve(distDir, "sitemap.xml");
-writeFileSync(distSitemap, xml, "utf8");
-console.log(`[sitemap] Wrote ${distSitemap}`);
-
-// Also place a copy in public for local preview if desired (optional)
-const publicDir = resolve(process.cwd(), "public");
-if (existsSync(publicDir)) {
-  const publicMap = resolve(publicDir, "sitemap.xml");
-  copyFileSync(distSitemap, publicMap);
-  console.log(`[sitemap] Copied to ${publicMap}`);
+function ensureDir(p: string) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
 
-// Also ensure robots.txt references the sitemap (optional helper)
-// If you already manage robots.txt, you can skip this block.
-const robotsPath = resolve(publicDir, "robots.txt");
-try {
-  let robots = "";
-  if (existsSync(robotsPath)) {
-    robots = (await import("fs/promises")).readFile(robotsPath, "utf8") as unknown as string;
-  }
-  const sitemapLine = `Sitemap: ${SITE_URL}/sitemap.xml`;
-  if (!robots.includes("User-agent")) robots = `User-agent: *\nAllow: /\n\n${robots}`;
-  if (!robots.includes(sitemapLine)) robots += (robots.endsWith("\n") ? "" : "\n") + sitemapLine + "\n";
-  writeFileSync(robotsPath, robots, "utf8");
-  console.log(`[sitemap] Ensured robots.txt contains sitemap line`);
-} catch {
-  /* non-fatal */
+function main() {
+  const urls = buildUrlset();
+  const xml = renderXml(urls);
+
+  ensureDir(PUBLIC_DIR);
+  fs.writeFileSync(path.join(PUBLIC_DIR, "sitemap.xml"), xml);
+  console.log(`[sitemap] Wrote ${path.join(PUBLIC_DIR, "sitemap.xml")}`);
+
+  ensureDir(DIST_DIR);
+  fs.writeFileSync(path.join(DIST_DIR, "sitemap.xml"), xml);
+  console.log(`[sitemap] Copied to ${path.join(DIST_DIR, "sitemap.xml")}`);
 }
+
+main();

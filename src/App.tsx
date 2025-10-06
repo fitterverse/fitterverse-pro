@@ -1,10 +1,11 @@
 // src/App.tsx
 import React from "react";
-import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 
 import MarketingNavbar from "@/components/nav/MarketingNavbar";
 import AppNavbar from "@/components/nav/AppNavbar";
 import AuthModal from "@/components/AuthModal";
+import HostRobotsGuard from "@/components/HostRobotsGuard";
 
 import Home from "@/pages/Home";
 import Pricing from "@/pages/Pricing";
@@ -15,53 +16,55 @@ import Settings from "@/pages/Settings";
 import Blog from "@/pages/Blog";
 import HubPage from "@/pages/blog/HubPage";
 import PostPage from "@/pages/blog/PostPage";
-import HabitDetail from "@/pages/HabitDetail"; // <— make sure this import exists
+import HabitDetail from "@/pages/HabitDetail";
+import NotFound from "@/pages/NotFound";
 
 import { useAuth } from "@/state/authStore";
+import RequireAuth from "@/routes/RequireAuth";
+import { isOnboarded } from "@/state/appStore";
 
-/** LocalStorage helper: read “onboarded” per user */
-function isOnboarded(uid?: string | null): boolean {
-  if (!uid) return false;
-  try {
-    return localStorage.getItem(`fv_onboarded_${uid}`) === "1";
-  } catch {
-    return false;
-  }
+function isMarketingPath(pathname: string) {
+  return (
+    pathname === "/" ||
+    pathname === "/pricing" ||
+    pathname === "/about" ||
+    pathname === "/blog" ||
+    pathname.startsWith("/blog/")
+  );
 }
 
 export default function App() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
+  const { user, loading } = useAuth();
   const location = useLocation();
-
-  // Prevent repeated redirects causing “blank” screens
-  const routedRef = React.useRef(false);
+  const navigate = useNavigate();
+  const redirectedOnceRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!user) return;                  // only redirect signed-in users
-    if (routedRef.current) return;      // only do it once per mount
+    if (loading) return;
+    if (!user) return;
+    if (redirectedOnceRef.current) return;
 
-    const path = location.pathname;
-    const onMarketing =
-      path === "/" ||
-      path === "/pricing" ||
-      path === "/about" ||
-      path === "/blog" ||
-      path.startsWith("/blog/");
+    const path = location.pathname || "/";
+    const onMarketing = isMarketingPath(path);
+    const onPrivate =
+      path.startsWith("/dashboard") ||
+      path.startsWith("/settings") ||
+      path.startsWith("/habit/") ||
+      path.startsWith("/onboarding");
 
-    if (onMarketing) {
-      routedRef.current = true;
+    if (!onPrivate && onMarketing) {
+      redirectedOnceRef.current = true;
       if (isOnboarded(user.uid)) {
         navigate("/dashboard", { replace: true });
       } else {
         navigate("/onboarding", { replace: true });
       }
     }
-  }, [user, location.pathname, navigate]);
+  }, [user, loading, location.pathname, navigate]);
 
   return (
     <div className="min-h-dvh bg-slate-950 text-slate-100">
-      {/* Use the app navbar when authenticated, marketing otherwise */}
+      <HostRobotsGuard />
       {user ? <AppNavbar /> : <MarketingNavbar />}
 
       <Routes>
@@ -70,19 +73,47 @@ export default function App() {
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/about" element={<About />} />
 
-        {/* Product */}
-        <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/habit/:id" element={<HabitDetail />} />
-        <Route path="/settings" element={<Settings />} />
+        {/* Product (auth required) */}
+        <Route
+          path="/onboarding"
+          element={
+            <RequireAuth>
+              <Onboarding />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/habit/:id"
+          element={
+            <RequireAuth>
+              <HabitDetail />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireAuth>
+              <Settings />
+            </RequireAuth>
+          }
+        />
 
         {/* Blog */}
         <Route path="/blog" element={<Blog />} />
         <Route path="/blog/:hubId" element={<HubPage />} />
         <Route path="/blog/:hubId/:slug" element={<PostPage />} />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* 404 */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
 
       <AuthModal />

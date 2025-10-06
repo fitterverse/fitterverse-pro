@@ -9,8 +9,10 @@ import {
   where,
   serverTimestamp,
 } from "firebase/firestore";
+import { Helmet } from "react-helmet-async";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/state/authStore";
+import { useAppStore } from "@/state/appStore";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 
@@ -24,7 +26,7 @@ type HabitOption = {
 /** ✅ Only these 3 habits are allowed */
 const HABIT_OPTIONS: HabitOption[] = [
   { type: "eat_healthy", name: "Eat healthy" },
-  { type: "workout",    name: "Workout" },
+  { type: "workout", name: "Workout" },
   { type: "walking_10k", name: "Walking (10k steps)" },
 ];
 
@@ -34,6 +36,9 @@ export default function Onboarding() {
   const [params] = useSearchParams();
 
   const mode = params.get("mode") === "add" ? "add" : "first";
+
+  // onboarding store
+  const markOnboarded = useAppStore((s) => s.markOnboarded);
 
   // form state
   const [selectedType, setSelectedType] = useState<HabitOption["type"] | "">("");
@@ -45,13 +50,27 @@ export default function Onboarding() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  // 🔁 One-time migration: if older builds set localStorage flag, copy it into the new store
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const legacyKey = `fv_onboarded_${user.uid}`;
+      if (localStorage.getItem(legacyKey) === "1") {
+        markOnboarded(user.uid);
+      }
+    } catch {}
+  }, [user, markOnboarded]);
+
   // Load user's existing habits (types only)
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
         setLoading(true);
-        const q = query(collection(db, "user_habits"), where("uid", "==", user.uid));
+        const q = query(
+          collection(db, "user_habits"),
+          where("uid", "==", user.uid)
+        );
         const snap = await getDocs(q);
         const types: string[] = [];
         snap.forEach((d) => {
@@ -91,7 +110,9 @@ export default function Onboarding() {
           <select
             className="input"
             value={answers.diet ?? ""}
-            onChange={(e) => setAnswers((s) => ({ ...s, diet: e.target.value }))}
+            onChange={(e) =>
+              setAnswers((s) => ({ ...s, diet: e.target.value }))
+            }
           >
             <option value="">Select</option>
             <option value="veg">Vegetarian</option>
@@ -112,7 +133,12 @@ export default function Onboarding() {
             max={7}
             className="input"
             value={answers.days ?? ""}
-            onChange={(e) => setAnswers((s) => ({ ...s, days: Number(e.target.value || 0) }))}
+            onChange={(e) =>
+              setAnswers((s) => ({
+                ...s,
+                days: Number(e.target.value || 0),
+              }))
+            }
           />
         </div>
       );
@@ -128,7 +154,12 @@ export default function Onboarding() {
             max={30000}
             className="input"
             value={answers.steps ?? 10000}
-            onChange={(e) => setAnswers((s) => ({ ...s, steps: Number(e.target.value || 0) }))}
+            onChange={(e) =>
+              setAnswers((s) => ({
+                ...s,
+                steps: Number(e.target.value || 0),
+              }))
+            }
           />
         </div>
       );
@@ -145,7 +176,10 @@ export default function Onboarding() {
 
     try {
       // 🔁 Defensive recheck just before saving
-      const reQ = query(collection(db, "user_habits"), where("uid", "==", user.uid));
+      const reQ = query(
+        collection(db, "user_habits"),
+        where("uid", "==", user.uid)
+      );
       const reSnap = await getDocs(reQ);
       const typesNow: string[] = [];
       reSnap.forEach((d) => {
@@ -174,7 +208,12 @@ export default function Onboarding() {
         createdAt: serverTimestamp(),
       });
 
-      // mark onboarded for this user
+      // ✅ Mark onboarded in the new store
+      try {
+        markOnboarded(user.uid);
+      } catch {}
+
+      // (optional) keep legacy flag set for backward compatibility
       try {
         localStorage.setItem(`fv_onboarded_${user.uid}`, "1");
       } catch {}
@@ -192,6 +231,12 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      <Helmet>
+        <title>{mode === "add" ? "Add a habit" : "Choose your first habit"} | Fitterverse</title>
+        <meta name="robots" content="noindex,nofollow" />
+        <link rel="canonical" href="https://fitterverse.in/onboarding" />
+      </Helmet>
+
       <section className="max-w-3xl mx-auto px-4 sm:px-6 md:px-10 py-8 md:py-10">
         <Card className="bg-slate-900/70 border-slate-800 p-5">
           <h1 className="text-2xl md:text-3xl font-bold">
@@ -202,7 +247,7 @@ export default function Onboarding() {
             You can have up to <strong>3 habits</strong>. No duplicates.
           </p>
 
-          {maxReached && (
+          {existingTypes.length >= 3 && (
             <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
               You already have 3 habits. Remove one in the dashboard to add another.
             </div>
@@ -217,7 +262,7 @@ export default function Onboarding() {
                 setSelectedType(e.target.value as HabitOption["type"]);
                 setAnswers({});
               }}
-              disabled={maxReached || loading}
+              disabled={existingTypes.length >= 3 || loading}
             >
               <option value="">Select a habit</option>
               {filteredOptions.map((opt) => (
@@ -228,7 +273,7 @@ export default function Onboarding() {
             </select>
           </div>
 
-          {duplicateSelected && (
+          {!!selectedType && existingTypes.includes(String(selectedType)) && (
             <div className="mt-3 text-sm text-rose-300">
               You already have this habit. Pick another one.
             </div>
@@ -253,7 +298,12 @@ export default function Onboarding() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!canSave}
+              disabled={
+                !selectedType ||
+                saving ||
+                existingTypes.length >= 3 ||
+                (!!selectedType && existingTypes.includes(String(selectedType)))
+              }
               className="bg-teal-500 hover:bg-teal-400 text-black"
             >
               {saving ? "Saving…" : "Save habit"}
