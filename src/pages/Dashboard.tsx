@@ -31,6 +31,7 @@ export default function Dashboard() {
 
   const handleAddHabit = () => navigate("/onboarding?mode=add");
 
+  // If no user, go back to home (marketing). Render nothing during redirect.
   useEffect(() => {
     if (!user) navigate("/", { replace: true });
   }, [user, navigate]);
@@ -40,7 +41,7 @@ export default function Dashboard() {
     setLoading(true);
     setErr(null);
 
-    // NOTE: Requires composite index on (uid asc, createdAt desc)
+    // Requires composite index: (uid ASC, createdAt DESC)
     const q = query(
       collection(db, "user_habits"),
       where("uid", "==", user.uid),
@@ -72,7 +73,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 md:px-10 py-8 md:py-10">
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 md:px-10 py-8 md:py-10 pb-24">
         <h1 className="text-2xl md:text-3xl font-bold">
           Your habits{user.displayName ? `, ${user.displayName}` : ""}
         </h1>
@@ -110,6 +111,8 @@ export default function Dashboard() {
                 key={h.id}
                 className="bg-slate-900/60 border-slate-800 p-5 hover:border-slate-700 cursor-pointer"
                 onClick={() => navigate(`/habit/${h.id}`)}
+                role="button"
+                aria-label={`Open ${h.name}`}
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -128,7 +131,8 @@ export default function Dashboard() {
       {/* Floating action button (single CTA) */}
       <button
         onClick={handleAddHabit}
-        className="fixed right-4 bottom-20 sm:right-6 sm:bottom-6 rounded-full bg-teal-500 hover:bg-teal-400 text-black px-6 py-4 text-lg font-semibold shadow-lg"
+        className="fixed right-4 bottom-20 sm:right-6 sm:bottom-6 z-50 rounded-full bg-teal-500 hover:bg-teal-400 text-black px-6 py-4 text-lg font-semibold shadow-lg"
+        aria-label="Add habit"
       >
         + Add habit
       </button>

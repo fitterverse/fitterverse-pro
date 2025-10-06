@@ -2,17 +2,78 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can read/write ONLY their own habit docs
+    // ---- Habits (root) ----
     match /user_habits/{habitId} {
-      allow read: if request.auth != null && request.auth.uid == resource.data.uid;
+      // Read only your own habit doc
+      allow read: if request.auth != null
+                   && request.auth.uid == resource.data.uid;
 
+      // Create only for yourself; basic shape checks
       allow create: if request.auth != null
-        && request.resource.data.uid == request.auth.uid;
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.type is string
+                    && request.resource.data.name is string;
 
+      // Update/Delete only your own doc (no UID swaps)
       allow update, delete: if request.auth != null
-        && resource.data.uid == request.auth.uid;
+                            && resource.data.uid == request.auth.uid;
+
+      // ---- Logs subcollection under each habit ----
+      match /logs/{logId} {
+        // Only the owner of the parent habit can access logs
+        function isOwner() {
+          return request.auth != null
+                 && get(/databases/$(database)/documents/user_habits/$(habitId)).data.uid
+                    == request.auth.uid;
+        }
+
+        // YYYY-MM-DD format for localDate
+        function validDate() {
+          return request.resource.data.localDate is string
+                 && request.resource.data.localDate.matches('^\\d{4}-\\d{2}-\\d{2}$');
+        }
+
+        // Optional timestamp must be a number if present
+        function validTs() {
+          return !( "ts" in request.resource.data )
+                 || request.resource.data.ts is int
+                 || request.resource.data.ts is float;
+        }
+
+        // Only allow these fields on create
+        function createHasOnlyAllowedFields() {
+          return request.resource.data.keys().hasOnly([ "localDate", "done", "ts" ]);
+        }
+
+        // Only allow these fields to change on update
+        function updateChangesAreSafe() {
+          return request.resource.data.diff(resource.data).changedKeys()
+                   .hasOnly([ "done", "ts" ]);
+        }
+
+        allow read: if isOwner();
+
+        // Create: owner, correct ID/date, valid shape
+        allow create: if isOwner()
+                      && createHasOnlyAllowedFields()
+                      && validDate()
+                      // Bind document ID to the date string, prevents overwriting other days
+                      && request.resource.data.localDate == logId
+                      && request.resource.data.done is bool
+                      && validTs();
+
+        // Update: owner, safe field changes only, keep same localDate & id
+        allow update: if isOwner()
+                      && updateChangesAreSafe()
+                      && validTs()
+                      && resource.data.localDate == logId
+                      && request.resource.data.localDate == resource.data.localDate;
+
+        // Delete: owner
+        allow delete: if isOwner();
+      }
     }
 
-    // Add other collections' rules here…
+    // Add other collections' rules below as needed…
   }
 }

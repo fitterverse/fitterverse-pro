@@ -1,76 +1,92 @@
 // src/pages/Onboarding.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { addDoc, collection, getDocs, query, where, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/state/authStore";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 
-/** Master list of habit options (expand later) */
-const HABIT_OPTIONS = [
-  { type: "eat_healthy", name: "Eat healthy" },
-  { type: "wake_early", name: "Wake up early" },
-  { type: "daily_walk", name: "Daily walk" },
-  { type: "deep_work", name: "Deep work (2h)" },
-  { type: "sleep_7_8h", name: "Sleep 7–8 hours" },
-];
-
 type Answers = Record<string, any>;
+
+type HabitOption = {
+  type: "eat_healthy" | "workout" | "walking_10k";
+  name: string;
+};
+
+/** ✅ Only these 3 habits are allowed */
+const HABIT_OPTIONS: HabitOption[] = [
+  { type: "eat_healthy", name: "Eat healthy" },
+  { type: "workout",    name: "Workout" },
+  { type: "walking_10k", name: "Walking (10k steps)" },
+];
 
 export default function Onboarding() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [existingTypes, setExistingTypes] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
 
   const mode = params.get("mode") === "add" ? "add" : "first";
 
-  // Form state
-  const [selectedType, setSelectedType] = useState<string>("");
+  // form state
+  const [selectedType, setSelectedType] = useState<HabitOption["type"] | "">("");
   const [answers, setAnswers] = useState<Answers>({});
+  const [saving, setSaving] = useState(false);
 
-  // Load already created habit types to filter options in add-mode
+  // existing state
+  const [existingTypes, setExistingTypes] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Load user's existing habits (types only)
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const q = query(collection(db, "user_habits"), where("uid", "==", user.uid));
-      const snap = await getDocs(q);
-      const types: string[] = [];
-      snap.forEach((d) => {
-        const data = d.data() as any;
-        if (data?.type) types.push(data.type);
-      });
-      setExistingTypes(types);
+      try {
+        setLoading(true);
+        const q = query(collection(db, "user_habits"), where("uid", "==", user.uid));
+        const snap = await getDocs(q);
+        const types: string[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as any;
+          if (data?.type) types.push(String(data.type));
+        });
+        setExistingTypes(types);
+      } catch (e: any) {
+        setErr(e?.message || "Could not load your habits.");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [user]);
 
+  // Filter options in add-mode to exclude already-created types
   const filteredOptions = useMemo(() => {
     if (mode !== "add") return HABIT_OPTIONS;
     return HABIT_OPTIONS.filter((o) => !existingTypes.includes(o.type));
   }, [mode, existingTypes]);
 
-  // Simple habit-specific short form
+  const maxReached = existingTypes.length >= 3;
+  const duplicateSelected =
+    !!selectedType && existingTypes.includes(String(selectedType));
+
+  const canSave =
+    !!selectedType && !saving && !maxReached && !duplicateSelected;
+
+  // Minimal dynamic questions just to keep structure (you can expand later)
   const renderDynamicQuestions = () => {
     if (!selectedType) return null;
 
     if (selectedType === "eat_healthy") {
       return (
         <div className="space-y-3">
-          <label className="block text-sm text-slate-300">Main challenge</label>
-          <select
-            className="input"
-            value={answers.challenge ?? ""}
-            onChange={(e) => setAnswers((s) => ({ ...s, challenge: e.target.value }))}
-          >
-            <option value="">Select</option>
-            <option value="sweets">Sweet cravings</option>
-            <option value="ordering">End up ordering food</option>
-            <option value="binge">Binge at night</option>
-            <option value="social">Social meals derail me</option>
-          </select>
-
           <label className="block text-sm text-slate-300">Diet preference</label>
           <select
             className="input"
@@ -82,80 +98,74 @@ export default function Onboarding() {
             <option value="nonveg">Non-vegetarian</option>
             <option value="vegan">Vegan</option>
           </select>
+        </div>
+      );
+    }
 
-          <label className="block text-sm text-slate-300">Meals per day</label>
+    if (selectedType === "workout") {
+      return (
+        <div className="space-y-3">
+          <label className="block text-sm text-slate-300">Target days/week</label>
           <input
             type="number"
             min={1}
-            max={6}
+            max={7}
             className="input"
-            value={answers.meals ?? ""}
-            onChange={(e) => setAnswers((s) => ({ ...s, meals: Number(e.target.value || 0) }))}
+            value={answers.days ?? ""}
+            onChange={(e) => setAnswers((s) => ({ ...s, days: Number(e.target.value || 0) }))}
           />
-
-          <label className="block text-sm text-slate-300">Plan style</label>
-          <select
-            className="input"
-            value={answers.plan ?? ""}
-            onChange={(e) => setAnswers((s) => ({ ...s, plan: e.target.value }))}
-          >
-            <option value="">Select</option>
-            <option value="if">Intermittent fasting</option>
-            <option value="omad">OMAD</option>
-            <option value="three">3 meals/day</option>
-            <option value="custom">Custom</option>
-          </select>
         </div>
       );
     }
 
-    if (selectedType === "wake_early") {
+    if (selectedType === "walking_10k") {
       return (
         <div className="space-y-3">
-          <label className="block text-sm text-slate-300">Target wake time</label>
+          <label className="block text-sm text-slate-300">Daily step target</label>
           <input
-            type="time"
+            type="number"
+            min={1000}
+            max={30000}
             className="input"
-            value={answers.wakeTime ?? ""}
-            onChange={(e) => setAnswers((s) => ({ ...s, wakeTime: e.target.value }))}
+            value={answers.steps ?? 10000}
+            onChange={(e) => setAnswers((s) => ({ ...s, steps: Number(e.target.value || 0) }))}
           />
-
-          <label className="block text-sm text-slate-300">Biggest blocker</label>
-          <select
-            className="input"
-            value={answers.blocker ?? ""}
-            onChange={(e) => setAnswers((s) => ({ ...s, blocker: e.target.value }))}
-          >
-            <option value="">Select</option>
-            <option value="late_sleep">Sleep late</option>
-            <option value="snooze">Hit snooze</option>
-            <option value="inconsistent">Inconsistent schedule</option>
-          </select>
         </div>
       );
     }
 
-    // Add more types here over time…
-    return (
-      <div className="space-y-3">
-        <label className="block text-sm text-slate-300">Notes (optional)</label>
-        <input
-          className="input"
-          placeholder="Anything we should know?"
-          value={answers.notes ?? ""}
-          onChange={(e) => setAnswers((s) => ({ ...s, notes: e.target.value }))}
-        />
-      </div>
-    );
+    return null;
   };
 
   const handleSave = async () => {
     if (!user || saving || !selectedType) return;
-    const meta = HABIT_OPTIONS.find((o) => o.type === selectedType);
-    if (!meta) return;
 
     setSaving(true);
+    setErr(null);
+
     try {
+      // 🔁 Defensive recheck just before saving
+      const reQ = query(collection(db, "user_habits"), where("uid", "==", user.uid));
+      const reSnap = await getDocs(reQ);
+      const typesNow: string[] = [];
+      reSnap.forEach((d) => {
+        const data = d.data() as any;
+        if (data?.type) typesNow.push(String(data.type));
+      });
+
+      if (typesNow.length >= 3) {
+        setErr("You already have 3 habits. Remove one before adding another.");
+        setSaving(false);
+        return;
+      }
+      if (typesNow.includes(selectedType)) {
+        setErr("You already have this habit. Choose a different one.");
+        setSaving(false);
+        return;
+      }
+
+      const meta = HABIT_OPTIONS.find((o) => o.type === selectedType)!;
+
       await addDoc(collection(db, "user_habits"), {
         uid: user.uid,
         type: meta.type,
@@ -163,10 +173,16 @@ export default function Onboarding() {
         answers,
         createdAt: serverTimestamp(),
       });
+
+      // mark onboarded for this user
+      try {
+        localStorage.setItem(`fv_onboarded_${user.uid}`, "1");
+      } catch {}
+
       navigate("/dashboard", { replace: true });
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Could not save habit. Please try again.");
+      setErr(e?.message || "Could not save habit. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -179,11 +195,18 @@ export default function Onboarding() {
       <section className="max-w-3xl mx-auto px-4 sm:px-6 md:px-10 py-8 md:py-10">
         <Card className="bg-slate-900/70 border-slate-800 p-5">
           <h1 className="text-2xl md:text-3xl font-bold">
-            {mode === "add" ? "Add a new habit" : "Choose your first habit"}
+            {mode === "add" ? "Add a habit" : "Choose your first habit"}
           </h1>
+
           <p className="mt-2 text-slate-300">
-            Pick one focus to start. You can always add more later.
+            You can have up to <strong>3 habits</strong>. No duplicates.
           </p>
+
+          {maxReached && (
+            <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              You already have 3 habits. Remove one in the dashboard to add another.
+            </div>
+          )}
 
           <div className="mt-5 space-y-3">
             <label className="block text-sm text-slate-300">Habit</label>
@@ -191,9 +214,10 @@ export default function Onboarding() {
               className="input"
               value={selectedType}
               onChange={(e) => {
-                setSelectedType(e.target.value);
+                setSelectedType(e.target.value as HabitOption["type"]);
                 setAnswers({});
               }}
+              disabled={maxReached || loading}
             >
               <option value="">Select a habit</option>
               {filteredOptions.map((opt) => (
@@ -204,10 +228,22 @@ export default function Onboarding() {
             </select>
           </div>
 
+          {duplicateSelected && (
+            <div className="mt-3 text-sm text-rose-300">
+              You already have this habit. Pick another one.
+            </div>
+          )}
+
           {selectedType && (
             <div className="mt-6">
-              <h3 className="font-semibold">A few quick questions</h3>
+              <h3 className="font-semibold">Quick setup</h3>
               <div className="mt-3">{renderDynamicQuestions()}</div>
+            </div>
+          )}
+
+          {err && (
+            <div className="mt-4 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+              {err}
             </div>
           )}
 
@@ -217,10 +253,10 @@ export default function Onboarding() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!selectedType || saving}
+              disabled={!canSave}
               className="bg-teal-500 hover:bg-teal-400 text-black"
             >
-              {saving ? "Saving…" : "Finish & go to dashboard"}
+              {saving ? "Saving…" : "Save habit"}
             </Button>
           </div>
         </Card>
