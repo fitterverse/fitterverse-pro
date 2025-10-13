@@ -32,6 +32,9 @@ export default function Home() {
         />
         <link rel="canonical" href={CANON} />
 
+        {/* Preload hero image to keep it high priority without using fetchPriority */}
+        <link rel="preload" as="image" href={OG_IMAGE} imagesrcset={OG_IMAGE} />
+
         {/* Basic Open Graph */}
         <meta property="og:title" content="Fitterverse – Habit-first fitness" />
         <meta
@@ -149,7 +152,6 @@ export default function Home() {
                   alt="Healthy habit routine—shoes, mat, and a simple plan"
                   className="h-72 w-full object-cover md:h-[420px]"
                   loading="eager"
-                  fetchPriority="high"
                   decoding="async"
                   width={1200}
                   height={800}
@@ -211,6 +213,9 @@ export default function Home() {
             text="Choose a simple outcome like ‘feel energized’ or ‘lose 3–5 kg’ and we’ll convert it into small identity-based habits."
             icon="🎯"
           />
+        </div>
+
+        <div className="mt-6 grid md:grid-cols-3 gap-6">
           <Step
             number="2"
             title="Get a tiny daily plan"

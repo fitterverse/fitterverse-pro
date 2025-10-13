@@ -196,7 +196,7 @@ export default function PostPage() {
                   width={post.hero.width || 1200}
                   height={post.hero.height || 800}
                   loading="eager"
-                  fetchPriority="high"
+                  fetchpriority="high"
                   decoding="async"
                 />
                 {post.hero.alt && <figcaption>{post.hero.alt}</figcaption>}

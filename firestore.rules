@@ -2,6 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- User profile from onboarding (owner only) ---
+    match /user_profiles/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
     // ---- Habits (root) ----
     match /user_habits/{habitId} {
       // Read only your own habit doc
@@ -20,6 +25,7 @@ service cloud.firestore {
 
       // ---- Logs subcollection under each habit ----
       match /logs/{logId} {
+
         // Only the owner of the parent habit can access logs
         function isOwner() {
           return request.auth != null
@@ -40,15 +46,36 @@ service cloud.firestore {
                  || request.resource.data.ts is float;
         }
 
+        // Optional meals map: only breakfast/lunch/dinner keys, and allowed values
+        function validMeals() {
+          return !("meals" in request.resource.data)
+                 || (
+                      request.resource.data.meals is map
+                      && request.resource.data.meals.keys().hasOnly(["breakfast","lunch","dinner"])
+                      && (
+                           !("breakfast" in request.resource.data.meals)
+                           || request.resource.data.meals.breakfast in ["yes","partial","no","skip"]
+                         )
+                      && (
+                           !("lunch" in request.resource.data.meals)
+                           || request.resource.data.meals.lunch in ["yes","partial","no","skip"]
+                         )
+                      && (
+                           !("dinner" in request.resource.data.meals)
+                           || request.resource.data.meals.dinner in ["yes","partial","no","skip"]
+                         )
+                    );
+        }
+
         // Only allow these fields on create
         function createHasOnlyAllowedFields() {
-          return request.resource.data.keys().hasOnly([ "localDate", "done", "ts" ]);
+          return request.resource.data.keys().hasOnly([ "localDate", "done", "ts", "meals" ]);
         }
 
         // Only allow these fields to change on update
         function updateChangesAreSafe() {
           return request.resource.data.diff(resource.data).changedKeys()
-                   .hasOnly([ "done", "ts" ]);
+                   .hasOnly([ "done", "ts", "meals" ]);
         }
 
         allow read: if isOwner();
@@ -57,15 +84,17 @@ service cloud.firestore {
         allow create: if isOwner()
                       && createHasOnlyAllowedFields()
                       && validDate()
+                      && validTs()
+                      && validMeals()
                       // Bind document ID to the date string, prevents overwriting other days
                       && request.resource.data.localDate == logId
-                      && request.resource.data.done is bool
-                      && validTs();
+                      && request.resource.data.done is bool;
 
         // Update: owner, safe field changes only, keep same localDate & id
         allow update: if isOwner()
                       && updateChangesAreSafe()
                       && validTs()
+                      && validMeals()
                       && resource.data.localDate == logId
                       && request.resource.data.localDate == resource.data.localDate;
 

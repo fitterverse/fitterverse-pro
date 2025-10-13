@@ -6,6 +6,9 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/state/authStore";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import DietHabitCard from "@/components/DietHabitCard";
+import WalkingHabitCard from "@/components/WalkingHabitCard";
+import WorkoutHabitCard from "@/components/WorkoutHabitCard";
 
 export default function HabitDashboard() {
   const { habitId } = useParams<{ habitId: string }>();
@@ -18,7 +21,8 @@ export default function HabitDashboard() {
   React.useEffect(() => {
     (async () => {
       if (!user || !habitId) return;
-      const ref = doc(db, "users", user.uid, "habits", habitId);
+      // READ from user_habits/{habitId}
+      const ref = doc(db, "user_habits", habitId);
       const snap = await getDoc(ref);
       if (snap.exists()) setHabit({ id: snap.id, ...snap.data() });
       setLoading(false);
@@ -36,17 +40,11 @@ export default function HabitDashboard() {
     );
   }
 
-  if (loading) {
-    return <div className="min-h-screen grid place-items-center text-slate-300">Loading…</div>;
-  }
+  if (loading) return <div className="min-h-screen grid place-items-center text-slate-300">Loading…</div>;
+  if (!habit) return <div className="min-h-screen grid place-items-center text-slate-300">Habit not found.</div>;
 
-  if (!habit) {
-    return (
-      <div className="min-h-screen grid place-items-center text-slate-300">
-        Habit not found.
-      </div>
-    );
-  }
+  const type = String(habit.type || "");
+  const answers = (habit.answers || {}) as any;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -54,51 +52,29 @@ export default function HabitDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold">
-              {habit.emoji ?? "🏁"} {habit.label}
+              {habit.emoji ?? (type === "eat_healthy" ? "🥗" : type === "walking_10k" ? "🚶" : "🏋️")}{" "}
+              {habit.name || "Habit"}
             </h1>
             <p className="text-slate-300 mt-1 text-sm">Your personalized habit hub</p>
           </div>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => navigate("/dashboard")}>All habits</Button>
-            <Button onClick={() => navigate("/onboarding")}>Add another habit</Button>
+            <Button onClick={() => navigate("/onboarding?mode=add")}>Add another habit</Button>
           </div>
         </div>
 
-        {/* Streak / analytics placeholders, ready for data */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <Card className="p-5 bg-slate-900/60 border-slate-800">
-            <h3 className="font-semibold">Streak</h3>
-            <p className="mt-2 text-3xl font-bold">3 days</p>
-          </Card>
-          <Card className="p-5 bg-slate-900/60 border-slate-800">
-            <h3 className="font-semibold">Consistency (30d)</h3>
-            <p className="mt-2 text-3xl font-bold">78%</p>
-          </Card>
-          <Card className="p-5 bg-slate-900/60 border-slate-800">
-            <h3 className="font-semibold">This week</h3>
-            <p className="mt-2 text-3xl font-bold">4 / 5</p>
-          </Card>
-        </div>
+        {/* Render the specific habit card */}
+        {type === "eat_healthy" && (
+          <DietHabitCard habitId={habit.id} onOpenTracker={() => { /* future: open food pdfs/recipes */ }} />
+        )}
 
-        {/* Journal + quick log (MVP placeholders) */}
-        <Card className="p-5 bg-slate-900/60 border-slate-800">
-          <h3 className="font-semibold">Today</h3>
-          <p className="text-slate-300 mt-2 text-sm">
-            We’ll put the fast logging controls here (checkboxes / steppers / segmented controls)
-            tailored to <span className="font-medium">{habit.label}</span>.
-          </p>
-          <div className="mt-4">
-            <Button className="bg-teal-500 hover:bg-teal-400 text-black">Save for today</Button>
-          </div>
-        </Card>
+        {type === "walking_10k" && (
+          <WalkingHabitCard habitId={habit.id} target={Number(answers.steps || 7000)} />
+        )}
 
-        <Card className="p-5 bg-slate-900/60 border-slate-800">
-          <h3 className="font-semibold">Notes / Journal</h3>
-          <textarea className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2" rows={4} placeholder="How did it go today?" />
-          <div className="mt-3 flex justify-end">
-            <Button variant="ghost">Save note</Button>
-          </div>
-        </Card>
+        {type === "workout" && (
+          <WorkoutHabitCard habitId={habit.id} targetDays={Math.max(1, Math.min(7, Number(answers.workoutDays || 3)))} />
+        )}
       </section>
     </div>
   );
