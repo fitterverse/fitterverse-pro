@@ -8,3 +8,7 @@ tsconfig.tsbuildinfo
 *.json
 !package.json
 !tsconfig.json
+
+# ignore archives & backups
+*.zip
+*.bak

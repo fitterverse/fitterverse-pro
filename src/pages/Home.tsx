@@ -16,6 +16,12 @@ export default function Home() {
     openAuthModal();
   };
 
+  const CANON = "https://fitterverse.in/";
+  const OG_IMAGE =
+    "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop";
+  const OG_IMAGE_WIDTH = "1200";
+  const OG_IMAGE_HEIGHT = "800";
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Helmet>
@@ -24,19 +30,24 @@ export default function Home() {
           name="description"
           content="Build lasting fitness with tiny daily actions, flexible streaks, weekly reviews, and gentle AI nudges. No guilt. Just momentum."
         />
-        <link rel="canonical" href="https://fitterverse.in/" />
+        <link rel="canonical" href={CANON} />
+
         {/* Basic Open Graph */}
         <meta property="og:title" content="Fitterverse – Habit-first fitness" />
         <meta
           property="og:description"
           content="Tiny actions → compounding progress. Join 5,000+ people building fitness the habit-first way."
         />
-        <meta
-          property="og:image"
-          content="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop"
-        />
+        <meta property="og:image" content={OG_IMAGE} />
+        <meta property="og:image:width" content={OG_IMAGE_WIDTH} />
+        <meta property="og:image:height" content={OG_IMAGE_HEIGHT} />
         <meta property="og:type" content="website" />
-        {/* Simple JSON-LD for organization */}
+
+        {/* Optional Twitter metadata */}
+        <meta name="twitter:card" content="summary_large_image" />
+        {/* <meta name="twitter:site" content="@yourhandle" /> */}
+
+        {/* Organization JSON-LD */}
         <script type="application/ld+json">
           {JSON.stringify({
             "@context": "https://schema.org",
@@ -47,6 +58,38 @@ export default function Home() {
               "https://fitterverse.web.app",
               "https://fitterverse.firebaseapp.com",
             ],
+          })}
+        </script>
+
+        {/* WebSite JSON-LD */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            url: CANON,
+            potentialAction: {
+              "@type": "SearchAction",
+              target: "https://fitterverse.in/search?q={query}",
+              "query-input": "required name=query",
+            },
+          })}
+        </script>
+
+        {/* SoftwareApplication JSON-LD */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "Fitterverse",
+            applicationCategory: "HealthApplication",
+            operatingSystem: "Web",
+            url: CANON,
+            offers: {
+              "@type": "Offer",
+              price: "0",
+              priceCurrency: "INR",
+              availability: "https://schema.org/InStock",
+            },
           })}
         </script>
       </Helmet>
@@ -100,16 +143,16 @@ export default function Home() {
           <div>
             <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
               <picture>
-                {/* A relevant, royalty-free hero image (Unsplash): workout + habit vibe */}
-                <source
-                  srcSet="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop"
-                  type="image/jpeg"
-                />
+                <source srcSet={OG_IMAGE} type="image/jpeg" />
                 <img
-                  src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1200&auto=format&fit=crop"
+                  src={OG_IMAGE}
                   alt="Healthy habit routine—shoes, mat, and a simple plan"
                   className="h-72 w-full object-cover md:h-[420px]"
                   loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  width={1200}
+                  height={800}
                 />
               </picture>
 
@@ -357,6 +400,9 @@ function Testimonial({
             alt={name}
             className="h-9 w-9 rounded-full ring-1 ring-slate-700"
             loading="lazy"
+            decoding="async"
+            width={36}
+            height={36}
           />
           <div className="text-sm">
             <div className="font-medium">{name}</div>

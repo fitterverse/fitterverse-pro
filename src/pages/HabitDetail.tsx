@@ -8,40 +8,80 @@ import {
   query,
   orderBy,
   limit,
-  setDoc,
   getDocs,
-  where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/state/authStore";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import DietMealTracker from "@/components/DietMealTracker";
+import {
+  ymd,
+  toggleDayDone,
+  computeStreak,
+  countLastNDays,
+} from "@/lib/habits";
 
 type HabitDoc = {
   uid: string;
+  type: string;        // "eat_healthy" | "walking_10k" | "workout" | …
   name: string;
-  type: string;
-  answers?: any;
+  answers?: Record<string, any>;
   createdAt?: any;
 };
 
 type HabitLog = {
-  localDate: string; // YYYY-MM-DD
-  done: boolean;
-  ts?: any;
+  localDate: string;   // "YYYY-MM-DD"
+  done?: boolean;
+  ts?: number;
+  meals?: {
+    breakfast?: "yes" | "partial" | "no" | "skip";
+    lunch?: "yes" | "partial" | "no" | "skip";
+    dinner?: "yes" | "partial" | "no" | "skip";
+  }
 };
-
-function formatYMD(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 function daysBack(date: Date, n: number) {
   const d = new Date(date);
   d.setDate(d.getDate() - n);
   return d;
+}
+function startOfMonth(d = new Date()) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function endOfMonth(d = new Date()) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
+function getMonthMatrix(refDate = new Date()) {
+  // Returns a 6x7 matrix of Date objects for the calendar grid (Sun..Sat)
+  const first = startOfMonth(refDate);
+  const last = endOfMonth(refDate);
+  const firstWeekday = first.getDay(); // 0=Sun .. 6=Sat
+
+  const grid: Date[][] = [];
+  const current = new Date(first);
+  current.setDate(first.getDate() - firstWeekday); // back to previous Sunday (or same)
+
+  for (let week = 0; week < 6; week++) {
+    const row: Date[] = [];
+    for (let day = 0; day < 7; day++) {
+      row.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+    grid.push(row);
+  }
+  return { grid, first, last };
+}
+function isSameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+function isYesterday(ref: Date, candidate: Date) {
+  const y = daysBack(new Date(ref), 1);
+  return isSameDay(y, candidate);
 }
 
 export default function HabitDetail() {
@@ -53,7 +93,7 @@ export default function HabitDetail() {
   const [loadingHabit, setLoadingHabit] = useState(true);
 
   const [logs, setLogs] = useState<HabitLog[]>([]);
-  const [savingToday, setSavingToday] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,80 +127,84 @@ export default function HabitDetail() {
     return () => unsub();
   }, [user, id]);
 
-  // Pull recent logs (last ~30 days)
+  // Pull recent logs (last ~120 to cover a few months; cheap query)
   useEffect(() => {
     if (!user || !id) return;
     (async () => {
       try {
         setError(null);
-        const thirtyDaysAgo = formatYMD(daysBack(new Date(), 29));
-        const logsRef = collection(db, "user_habits", id, "logs");
-        const q = query(
-          logsRef,
-          where("localDate", ">=", thirtyDaysAgo),
-          orderBy("localDate", "desc"),
-          limit(60)
-        );
-        const snap = await getDocs(q);
-        const rows: HabitLog[] = [];
-        snap.forEach((d) => rows.push(d.data() as HabitLog));
-        rows.sort((a, b) => (a.localDate < b.localDate ? 1 : -1));
-        setLogs(rows);
+        const ref = collection(db, "user_habits", id, "logs");
+        const qRef = query(ref, orderBy("localDate", "desc"), limit(120));
+        const snap = await getDocs(qRef);
+        const data: HabitLog[] = [];
+        snap.forEach((d) => data.push(d.data() as HabitLog));
+        setLogs(data);
       } catch (e: any) {
         setError(e?.message || "Failed to load logs.");
       }
     })();
   }, [user, id]);
 
-  const todayKey = useMemo(() => formatYMD(new Date()), []);
-  const todayDone = useMemo(
-    () => logs.some((l) => l.localDate === todayKey && l.done),
-    [logs, todayKey]
-  );
+  const today = new Date();
+  const todayKey = ymd(today);
 
-  const currentStreak = useMemo(() => {
-    const byDate = new Map(logs.map((l) => [l.localDate, !!l.done]));
-    let streak = 0;
-    for (let i = 0; i < 90; i++) {
-      const key = formatYMD(daysBack(new Date(), i));
-      if (byDate.get(key)) streak++;
-      else break;
+  const doneMap = useMemo(() => {
+    const m = new Map<string, boolean>();
+    logs.forEach((l) => m.set(l.localDate, !!l.done));
+    return m;
+  }, [logs]);
+
+  const todayDone = !!doneMap.get(todayKey);
+  const currentStreak = useMemo(() => computeStreak(doneMap, 365), [doneMap]);
+  const weeklyCount = useMemo(() => countLastNDays(doneMap, 7), [doneMap]);
+
+  // Toggle for a given date; only allows Today or Yesterday
+  const toggleForDate = async (date: Date) => {
+    if (!user || !id || saving) return;
+
+    const allowToday = isSameDay(date, today);
+    const allowYesterday = isYesterday(today, date);
+    if (!allowToday && !allowYesterday) return;
+
+    if (allowYesterday) {
+      const ok = window.confirm(
+        "Edit yesterday? You can only change yesterday (not older)."
+      );
+      if (!ok) return;
     }
-    return streak;
-  }, [logs]);
 
-  const weeklyCount = useMemo(() => {
-    const sevenDays = new Set(
-      Array.from({ length: 7 }).map((_, i) => formatYMD(daysBack(new Date(), i)))
-    );
-    return logs.filter((l) => sevenDays.has(l.localDate) && l.done).length;
-  }, [logs]);
-
-  const markTodayDone = async () => {
-    if (!user || !id || savingToday || todayDone) return;
-    setSavingToday(true);
+    setSaving(true);
     setError(null);
     try {
-      const ref = doc(db, "user_habits", id, "logs", todayKey);
-      await setDoc(ref, { localDate: todayKey, done: true, ts: Date.now() }, { merge: true });
+      const nextDone = await toggleDayDone(id, date);
+      const key = ymd(date);
+
       setLogs((prev) => {
-        const exists = prev.some((l) => l.localDate === todayKey);
-        if (exists) return prev.map((l) => (l.localDate === todayKey ? { ...l, done: true } : l));
-        return [{ localDate: todayKey, done: true }, ...prev];
+        const idx = prev.findIndex((l) => l.localDate === key);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], done: nextDone, ts: Date.now() };
+          return copy;
+        }
+        // if no doc existed, add one (e.g., first-time toggle)
+        return [{ localDate: key, done: nextDone, ts: Date.now() }, ...prev];
       });
     } catch (e: any) {
-      setError(e?.message || "Could not save today’s log.");
+      setError(e?.message || "Could not update day.");
     } finally {
-      setSavingToday(false);
+      setSaving(false);
     }
   };
 
-  if (!user) return null;
+  const { grid, first, last } = useMemo(() => getMonthMatrix(today), [today]);
+  const isInThisMonth = (d: Date) =>
+    d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <section className="max-w-3xl mx-auto px-4 sm:px-6 md:px-8 py-6">
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 md:px-10 py-10 space-y-6">
         <button
+          type="button"
           onClick={() => navigate("/dashboard")}
           className="mb-3 text-sm text-slate-400 hover:text-white"
         >
@@ -190,23 +234,22 @@ export default function HabitDetail() {
                 </p>
               </div>
 
+              {/* Reversible toggle for TODAY (button) */}
               <Button
-                onClick={markTodayDone}
-                disabled={todayDone || savingToday}
-                className={`${
-                  todayDone
-                    ? "bg-emerald-600/30 text-emerald-200"
-                    : "bg-teal-500 hover:bg-teal-400 text-black"
-                }`}
+                onClick={() => toggleForDate(today)}
+                disabled={saving}
+                className={todayDone ? "bg-amber-400 hover:bg-amber-300 text-black" : "bg-teal-500 hover:bg-teal-400 text-black"}
+                title={todayDone ? "Undo today" : "Mark today done"}
               >
-                {todayDone ? "Done for today ✓" : savingToday ? "Saving…" : "Mark today done"}
+                {saving ? "Updating…" : todayDone ? "Undo today" : "Mark today done"}
               </Button>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 mt-5">
+            {/* Quick stats */}
+            <div className="grid md:grid-cols-3 gap-4">
               <Card className="bg-slate-900/70 border-slate-800 p-4 text-center">
                 <div className="text-xs text-slate-400">Current streak</div>
-                <div className="mt-1 text-2xl font-bold">{currentStreak}🔥</div>
+                <div className="mt-1 text-2xl font-bold">{currentStreak} days</div>
               </Card>
               <Card className="bg-slate-900/70 border-slate-800 p-4 text-center">
                 <div className="text-xs text-slate-400">This week</div>
@@ -220,27 +263,84 @@ export default function HabitDetail() {
               </Card>
             </div>
 
+            {/* Diet tracker appears only for eat_healthy */}
+            {habit.type === "eat_healthy" && (
+              <Card className="bg-slate-900/70 border-slate-800 p-5">
+                <DietMealTracker habitId={id!} />
+              </Card>
+            )}
+
+            {/* Month calendar with dates & check states */}
             <Card className="bg-slate-900/70 border-slate-800 p-5 mt-5">
-              <h3 className="font-semibold">Recent days</h3>
-              <div className="mt-3 grid grid-cols-7 gap-2">
-                {Array.from({ length: 14 }).map((_, i) => {
-                  const key = formatYMD(daysBack(new Date(), i));
-                  const done = logs.some((l) => l.localDate === key && l.done);
-                  return (
-                    <div
-                      key={key}
-                      title={key}
-                      className={`aspect-square rounded-lg border ${
-                        done
-                          ? "bg-emerald-500/20 border-emerald-500/40"
-                          : "bg-slate-800/60 border-slate-700"
-                      } grid place-items-center text-xs text-slate-300`}
-                    >
-                      {done ? "✓" : ""}
-                    </div>
-                  );
-                })}
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold">
+                  {first.toLocaleString(undefined, { month: "long" })} {first.getFullYear()}
+                </h3>
+                <div className="text-xs text-slate-400">
+                  Showing {first.toLocaleDateString()} – {last.toLocaleDateString()}
+                </div>
               </div>
+
+              {/* Weekday headers */}
+              <div className="grid grid-cols-7 text-center text-xs text-slate-400 mb-2">
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((w) => (
+                  <div key={w} className="py-1">{w}</div>
+                ))}
+              </div>
+
+              {/* 6x7 calendar grid */}
+              <div className="grid grid-cols-7 gap-1">
+                {grid.map((row, ri) =>
+                  row.map((date, ci) => {
+                    const key = ymd(date);
+                    const inMonth = isInThisMonth(date);
+                    const isDone = !!doneMap.get(key);
+                    const isToday = isSameDay(date, today);
+                    const wasYesterday = isYesterday(today, date);
+
+                    const canEdit = isToday || wasYesterday;
+
+                    const base =
+                      "aspect-square rounded-lg border grid place-items-center relative overflow-hidden";
+                    const tone = inMonth
+                      ? isDone
+                        ? "bg-emerald-500/20 border-emerald-500/40"
+                        : "bg-slate-800/60 border-slate-700"
+                      : "bg-slate-900/40 border-slate-800/60 opacity-60";
+
+                    return (
+                      <button
+                        key={`${ri}-${ci}`}
+                        type="button"
+                        className={`${base} ${tone} ${canEdit ? "hover:ring-1 hover:ring-indigo-400/60" : "cursor-default"}`}
+                        title={
+                          canEdit
+                            ? isToday
+                              ? `${key}${isDone ? " • done" : ""} — click to toggle`
+                              : `${key}${isDone ? " • done" : ""} — click to toggle (yesterday only)`
+                            : `${key}${isDone ? " • done" : ""}`
+                        }
+                        disabled={!canEdit || saving}
+                        onClick={() => toggleForDate(date)}
+                      >
+                        {/* Date number (top-left) */}
+                        <div className="absolute top-1 left-1 text-[10px] text-slate-400">
+                          {date.getDate()}
+                        </div>
+                        {/* State emoji */}
+                        <div className="text-base">{isDone ? "✓" : ""}</div>
+                        {/* Today ring */}
+                        {isToday && (
+                          <div className="absolute inset-0 ring-1 ring-indigo-400/60 rounded-lg pointer-events-none"></div>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <p className="mt-2 text-xs text-slate-400">
+                You can toggle <strong>today</strong> instantly and <strong>yesterday</strong> with confirmation. Older dates are read-only.
+              </p>
             </Card>
 
             {error && (

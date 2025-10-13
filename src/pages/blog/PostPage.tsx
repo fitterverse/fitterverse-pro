@@ -1,160 +1,270 @@
 // src/pages/blog/PostPage.tsx
 import React from "react";
-import { useParams, Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { getHubById, getPostBySlug, type Hub } from "@/content";
+import { Link, useParams } from "react-router-dom";
+// ⛔️ Removed MarketingNavbar import to avoid double nav
+import { getPost, getAllPosts } from "@/lib/content";
+import ArticleComments from "@/pages/blog/ArticleComments";
+import "@/styles/article.css";
 
-type AnyPost = {
-  title: string;
-  description?: string;
-  date?: string;
-  keywords?: string[];
-  // any one (or more) of these may exist in your content source:
-  html?: string;
-  contentHtml?: string;
-  body?: string[];      // array of paragraphs/blocks
-  content?: string;     // legacy key
-};
-
-function PostBody({ post }: { post: AnyPost }) {
-  // Prefer explicit HTML fields if present
-  if (post.html) {
-    return <div dangerouslySetInnerHTML={{ __html: post.html }} />;
-  }
-  if (post.contentHtml) {
-    return <div dangerouslySetInnerHTML={{ __html: post.contentHtml }} />;
-  }
-  // Support legacy "content" (string, possibly HTML)
-  if ((post as any).content) {
-    const c = (post as any).content as string;
-    const looksHtml = /<\/?[a-z][\s\S]*>/i.test(c);
-    return looksHtml ? (
-      <div dangerouslySetInnerHTML={{ __html: c }} />
-    ) : (
-      <p className="whitespace-pre-wrap">{c}</p>
-    );
-  }
-  // Simple array of paragraphs
-  if (Array.isArray(post.body) && post.body.length) {
-    return (
-      <div className="space-y-4">
-        {post.body.map((p, i) => (
-          <p key={i} className="text-slate-200 leading-7">
-            {p}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  // Fallback
-  return (
-    <p className="text-slate-300">
-      Coming soon. Meanwhile, explore more posts from this hub.
-    </p>
-  );
+/* utils */
+function stripHtml(html: string) {
+  if (typeof document === "undefined") return html;
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return div.textContent || div.innerText || "";
+}
+function toId(text: string) {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .replace(/\s+/g, "-");
 }
 
-export default function PostPage() {
-  // IMPORTANT: the route is /blog/:hubId/:slug
-  const { hubId = "", slug = "" } = useParams<{ hubId: Hub; slug: string }>();
-  const hub = getHubById(hubId);
-  const post = hub ? (getPostBySlug(hub.id, slug) as AnyPost | undefined) : undefined;
+type PostLite = {
+  hub: string;
+  slug: string;
+  title: string;
+  description?: string;
+  hero?: { url?: string; alt?: string; width?: number; height?: number };
+  date?: string;
+  updated?: string;
+  readingMinutes?: number;
+};
 
-  if (!hub || !post) {
+export default function PostPage() {
+  const { hubId = "", slug = "" } = useParams();
+  const [post, setPost] = React.useState<any | null>(null);
+  const [related, setRelated] = React.useState<PostLite[]>([]);
+  const [toc, setToc] = React.useState<{ id: string; text: string; level: number }[]>([]);
+  const [activeId, setActiveId] = React.useState<string>("");
+  const contentRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      const p = await getPost(hubId, slug);
+      setPost(p || null);
+
+      const all = await getAllPosts();
+      const others = all.filter((x: any) => !(x.hub === hubId && x.slug === slug));
+      const sameHub = others.filter((x: any) => x.hub === hubId).slice(0, 4);
+      const fill = sameHub.length < 4 ? others.slice(0, 4 - sameHub.length) : [];
+      const picks = [...sameHub, ...fill].slice(0, 4).map((x: any) => ({
+        hub: x.hub,
+        slug: x.slug,
+        title: x.title,
+        description: x.description,
+        hero: x.hero,
+        date: x.date,
+        updated: x.updated,
+        readingMinutes: x.readingMinutes,
+      }));
+      setRelated(picks);
+    })();
+  }, [hubId, slug]);
+
+  React.useEffect(() => {
+    if (!post) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const hs = Array.from(el.querySelectorAll("h2, h3, h4")) as HTMLHeadingElement[];
+    hs.forEach((h) => {
+      if (!h.id) h.id = toId(h.textContent || "");
+    });
+    setToc(
+      hs.map((h) => ({
+        id: h.id,
+        text: h.textContent || "",
+        level: h.tagName === "H2" ? 2 : h.tagName === "H3" ? 3 : 4,
+      }))
+    );
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => (a.target as HTMLElement).offsetTop - (b.target as HTMLElement).offsetTop);
+        if (visible[0]) setActiveId((visible[0].target as HTMLElement).id);
+      },
+      { rootMargin: "0px 0px -70% 0px", threshold: [0, 1] }
+    );
+    hs.forEach((h) => obs.observe(h));
+    return () => obs.disconnect();
+  }, [post]);
+
+  // Make external links open in new tab
+  React.useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const anchors = root.querySelectorAll<HTMLAnchorElement>("a[href^='http']");
+    anchors.forEach((a) => {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    });
+  }, [post]);
+
+  if (!post) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-16">
-        <Helmet>
-          <title>Not found | Fitterverse Blog</title>
-          <meta name="robots" content="noindex,nofollow" />
-          <link rel="canonical" href="https://fitterverse.in/404" />
-        </Helmet>
+      <main className="mx-auto max-w-7xl px-4 py-16">
         <h1 className="text-2xl font-bold">Post not found</h1>
-        <p className="mt-2 text-slate-400">
-          Try returning to the{" "}
-          <Link to="/blog" className="text-emerald-400 underline">
-            Blog
-          </Link>.
+        <p className="mt-2">
+          Try returning to the <Link to="/blog" className="underline text-sky-600">Blog</Link>.
         </p>
       </main>
     );
   }
 
-  const canonical = `https://fitterverse.in/blog/${hub.id}/${slug}`;
-  const ogImage = "https://fitterverse.in/images/dashboard.jpg";
+  const CANON = `https://fitterverse.in/blog/${hubId}/${slug}`;
+  const bodyHtml = post.html || "";
+  const wordCount = stripHtml(bodyHtml).split(/\s+/).filter(Boolean).length;
+
+  const faqSchema =
+    Array.isArray(post.faq) && post.faq.length
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: post.faq.map((f: any) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
+        }
+      : null;
+
+  const articleSchema = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: post.title,
+    description: post.description || "",
+    image: post.hero?.url ? [post.hero.url] : [],
+    datePublished: post.date ? new Date(post.date).toISOString() : undefined,
+    dateModified: post.updated ? new Date(post.updated).toISOString() : undefined,
+    wordCount,
+    mainEntityOfPage: CANON,
+  };
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
+    <div className="min-h-screen article-shell">
       <Helmet prioritizeSeoTags>
-        <title>{post.title} | Fitterverse Blog</title>
-        {post.description && (
-          <meta name="description" content={post.description} />
-        )}
-        <link rel="canonical" href={canonical} />
-
-        {/* Open Graph / Twitter */}
+        <title>{post.title} – Fitterverse</title>
+        {post.description && <meta name="description" content={post.description} />}
+        <link rel="canonical" href={CANON} />
+        <meta property="og:title" content={post.title} />
+        {post.description && <meta property="og:description" content={post.description} />}
         <meta property="og:type" content="article" />
-        <meta property="og:title" content={`${post.title} | Fitterverse Blog`} />
-        {post.description && (
-          <meta property="og:description" content={post.description} />
+        <meta property="og:url" content={CANON} />
+        {post.hero?.url && <meta property="og:image" content={post.hero.url} />}
+        {post.date && (
+          <meta property="article:published_time" content={new Date(post.date).toISOString()} />
         )}
-        <meta property="og:url" content={canonical} />
-        <meta property="og:image" content={ogImage} />
-        <meta name="twitter:card" content="summary_large_image" />
-
-        {/* Article JSON-LD */}
-        <script type="application/ld+json">{JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "BlogPosting",
-          "headline": post.title,
-          "description": post.description ?? "",
-          "datePublished": post.date ?? undefined,
-          "dateModified": post.date ?? undefined,
-          "mainEntityOfPage": canonical,
-          "image": [ogImage],
-          "author": { "@type": "Organization", "name": "Fitterverse" },
-          "publisher": {
-            "@type": "Organization",
-            "name": "Fitterverse",
-            "logo": { "@type": "ImageObject", "url": "https://fitterverse.in/icons/icon-512.png" }
-          }
-        })}</script>
-
-        {/* Breadcrumbs JSON-LD */}
-        <script type="application/ld+json">{JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "BreadcrumbList",
-          "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Blog", "item": "https://fitterverse.in/blog" },
-            { "@type": "ListItem", "position": 2, "name": hub.title, "item": `https://fitterverse.in/blog/${hub.id}` },
-            { "@type": "ListItem", "position": 3, "name": post.title, "item": canonical }
-          ]
-        })}</script>
+        {post.updated && (
+          <meta property="article:modified_time" content={new Date(post.updated).toISOString()} />
+        )}
+        <script type="application/ld+json">{JSON.stringify(articleSchema)}</script>
+        {faqSchema && <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>}
       </Helmet>
 
-      <article className="prose prose-invert max-w-none">
-        <header className="mb-6">
-          <h1 className="text-3xl md:text-4xl font-extrabold">{post.title}</h1>
-          {post.date ? (
-            <p className="mt-2 text-slate-400 text-sm">{post.date}</p>
-          ) : null}
-          {post.keywords?.length ? (
-            <p className="mt-1 text-slate-400 text-xs">
-              {post.keywords.slice(0, 6).join(" · ")}
-            </p>
-          ) : null}
-        </header>
+      {/* wider container to reduce side gutters on desktop */}
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
+        {/* breadcrumbs */}
+        <nav className="mb-4 text-sm article-meta">
+          <Link to="/blog" className="underline text-sky-600">Blog</Link>
+          {" / "}
+          <Link to={`/blog/${post.hub}`} className="underline text-sky-600">
+            {post.hubInfo?.title || post.hub}
+          </Link>
+        </nav>
 
-        <PostBody post={post} />
-      </article>
+        {/* Article card */}
+        <article className="article-card">
+          {/* Title + meta */}
+          <header>
+            <h1 className="font-extrabold" style={{ marginTop: 0 }}>{post.title}</h1>
+            <div className="mt-2 article-meta">
+              {post.date && <>Published {new Date(post.date).toLocaleDateString()}</>}
+              {post.updated && <> , updated {new Date(post.updated).toLocaleDateString()}</>}
+              {post.readingMinutes && <> • {post.readingMinutes} min read</>}
+              {wordCount ? <> • {wordCount.toLocaleString()} words</> : null}
+            </div>
 
-      <div className="mt-10">
-        <Link
-          to={`/blog/${hub.id}`}
-          className="inline-flex items-center rounded-lg border border-slate-700 px-4 py-2 hover:bg-slate-800/60 text-sm"
-        >
-          ← Back to {hub.title}
-        </Link>
-      </div>
-    </main>
+            {post.hero?.url && (
+              <figure style={{ marginTop: 16 }}>
+                <img
+                  src={post.hero.url}
+                  alt={post.hero.alt || post.title}
+                  width={post.hero.width || 1200}
+                  height={post.hero.height || 800}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                />
+                {post.hero.alt && <figcaption>{post.hero.alt}</figcaption>}
+              </figure>
+            )}
+          </header>
+
+          {/* On this page — at the top (non-sticky) */}
+          {toc.length > 0 && (
+            <div className="toc" style={{ marginTop: 16 }}>
+              <div className="toc-title">On this page</div>
+              <ul className="toc-list">
+                {toc.map((t) => (
+                  <li key={t.id} style={{ marginLeft: t.level === 3 ? 12 : t.level === 4 ? 24 : 0 }}>
+                    <a className={activeId === t.id ? "toc-active" : ""} href={`#${t.id}`}>
+                      {t.text}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Body */}
+          <div
+            ref={contentRef}
+            className="article-content mt-6"
+            dangerouslySetInnerHTML={{ __html: post.html || "" }}
+          />
+
+          {/* References */}
+          {Array.isArray(post.sources) && post.sources.length > 0 && (
+            <section className="refs" style={{ marginTop: 28 }}>
+              <h2>References</h2>
+              <ul className="refs-list">
+                {post.sources.map((s: any, i: number) => (
+                  <li key={i}>
+                    <a href={s.url} target="_blank" rel="noopener noreferrer">
+                      {s.name}
+                    </a>
+                    {s.note ? <span className="refs-note"> — {s.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Comments */}
+          <ArticleComments hubId={hubId} slug={slug} />
+
+          {/* Related */}
+          {related.length > 0 && (
+            <section className="related">
+              <h3 className="font-semibold">Recommended next reads</h3>
+              <div className="related-grid">
+                {related.map((r) => (
+                  <div key={`${r.hub}/${r.slug}`} className="related-card">
+                    <Link to={`/blog/${r.hub}/${r.slug}`}>
+                      <div className="font-medium">{r.title}</div>
+                      {r.description && <div className="desc">{r.description}</div>}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </article>
+      </main>
+    </div>
   );
 }
