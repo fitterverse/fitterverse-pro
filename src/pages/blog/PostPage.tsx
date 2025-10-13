@@ -196,7 +196,7 @@ export default function PostPage() {
                   width={post.hero.width || 1200}
                   height={post.hero.height || 800}
                   loading="eager"
-                  fetchpriority="high"
+                  {...{ fetchpriority: "high" }}  // TS-safe way to set the non-typed attribute
                   decoding="async"
                 />
                 {post.hero.alt && <figcaption>{post.hero.alt}</figcaption>}
