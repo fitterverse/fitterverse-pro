@@ -1,350 +1,239 @@
 // src/pages/Onboarding.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
+import { useNavigate } from "react-router-dom";
 import {
   addDoc,
   collection,
+  doc,
+  getDoc,
   getDocs,
   query,
-  where,
   serverTimestamp,
+  setDoc,
+  where,
 } from "firebase/firestore";
-import { Helmet } from "react-helmet-async";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/state/authStore";
-import { useAppStore } from "@/state/appStore";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 
-type Answers = Record<string, any>;
+type StepKey =
+  | "goal"
+  | "secondary"
+  | "diet"
+  | "activity"
+  | "workoutsNow"
+  | "targets"
+  | "metrics"
+  | "experience"
+  | "review"
+  | "processing";
 
-type HabitOption = {
-  type: "eat_healthy" | "workout" | "walking_10k";
-  name: string;
-};
-
-const HABIT_OPTIONS: HabitOption[] = [
-  { type: "eat_healthy", name: "Eat healthy" },
-  { type: "workout", name: "Workout" },
-  { type: "walking_10k", name: "Walking (10k steps)" },
+const ORDER: StepKey[] = [
+  "goal",
+  "secondary",
+  "diet",
+  "activity",
+  "workoutsNow",
+  "targets",
+  "metrics",
+  "experience",
+  "review",
 ];
 
-type StepKey = "food" | "movement" | "goals" | "review";
-
-/** Clamp helper */
-const clamp = (v: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, v || 0));
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v || 0));
+const isMedicalGoal = (g: string) => ["Manage PCOS", "Manage Diabetes", "Manage Thyroid"].includes(g);
 
 export default function Onboarding() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
 
-  const mode = params.get("mode") === "add" ? "add" : "first";
-  const markOnboarded = useAppStore((s) => s.markOnboarded);
-
-  // ---------- State
-  const [selectedType, setSelectedType] = useState<HabitOption["type"] | "">("");
-  const [answers, setAnswers] = useState<Answers>({});
+  const [step, setStep] = useState<StepKey>("goal");
+  const [furthestIdx, setFurthestIdx] = useState(0); // lock forward nav
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [existingTypes, setExistingTypes] = useState<string[]>([]);
+  const [procError, setProcError] = useState<string | null>(null);
 
-  // Multi-step defaults (fix: safe defaults so submit never blocks silently)
-  const [step, setStep] = useState<StepKey>("food");
-  const [food, setFood] = useState<{
-    enabled: boolean;
-    diet: "veg" | "egg" | "nonveg";
-    meals: Array<"breakfast" | "lunch" | "dinner">;
-  }>({
-    enabled: true,
-    diet: "veg", // ✅ default to veg so users aren’t blocked
-    meals: ["breakfast", "lunch", "dinner"], // ✅ sensible default
+  // —— Answers (minimal, focused) ——
+  const [ans, setAns] = useState<any>({
+    // 1) Main goal (required)
+    primaryGoal: "Lose fat",
+
+    // 2) Secondary focus (optional, unlimited)
+    secondary: [] as string[],
+
+    // 3) Diet (dietPattern required, exclusions optional)
+    dietPattern: "Veg",
+    exclusions: [] as string[],
+    exclusionsOther: "",
+
+    // 4.1) Current activity (required)
+    activityLevel: "Light (5–7k)",
+
+    // 4.2) Current workouts (required)
+    currentWorkouts: "None",
+
+    // 4.3) Targets (numbers; can be 0 for “None”)
+    targetSteps: 7000 as 0 | 5000 | 7000 | 10000,
+    targetWorkoutDays: 3 as 0 | 2 | 3 | 4 | 5 | 6 | 7,
+
+    // 5) Metrics (height & weight required; body fat optional)
+    heightCm: "",
+    weightKg: "",
+    bodyFat: "",
+
+    // 6) Experience (optional)
+    experience: null as
+      | "first_time"
+      | "self"
+      | "program"
+      | "apps"
+      | "inconsistent"
+      | null,
+    stopReasons: [] as string[],
+    stopOther: "",
   });
 
-  const [movement, setMovement] = useState<{
-    walking: boolean;
-    workout: boolean;
-    workoutDays: number;
-  }>({
-    walking: true,
-    workout: false,
-    workoutDays: 3, // default; will clamp 1–7
-  });
-
-  const [goals, setGoals] = useState<{ steps?: number; weightLossKg?: number }>(
-    { steps: 5000 }
-  );
-
-  // ---------- Legacy onboarded flag (unchanged)
   useEffect(() => {
-    if (!user) return;
-    try {
-      const legacyKey = `fv_onboarded_${user.uid}`;
-      if (localStorage.getItem(legacyKey) === "1") {
-        markOnboarded(user.uid);
-      }
-    } catch {}
-  }, [user, markOnboarded]);
+    if (!user) navigate("/", { replace: true });
+  }, [user, navigate]);
 
-  // ---------- Load existing habit types for this user (to avoid duplicates)
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
+  // Track progress (exclude "processing")
+  const stepIndex = Math.max(0, ORDER.indexOf(step));
+  const progressPct = Math.round(((stepIndex + 1) / ORDER.length) * 100);
+
+  // Enforce step order: only allow going forward one-by-one; backwards anytime
+  function goTo(next: StepKey) {
+    const nextIdx = ORDER.indexOf(next);
+    if (nextIdx <= furthestIdx || nextIdx <= stepIndex + 1) {
+      setStep(next);
+      setFurthestIdx((f) => Math.max(f, nextIdx));
+    }
+  }
+
+  function nextStep() {
+    const nextIdx = Math.min(stepIndex + 1, ORDER.length - 1);
+    goTo(ORDER[nextIdx]);
+  }
+  function prevStep() {
+    const prevIdx = Math.max(stepIndex - 1, 0);
+    goTo(ORDER[prevIdx]);
+  }
+
+  // Validation per step
+  const errors = useMemo(() => {
+    const e: Record<StepKey, string | null> = {
+      goal: ans.primaryGoal ? null : "Please choose a main goal.",
+      secondary: null, // optional
+      diet: ans.dietPattern ? null : "Select your diet pattern.",
+      activity: ans.activityLevel ? null : "Select your baseline activity.",
+      workoutsNow: ans.currentWorkouts ? null : "How often are you working out now?",
+      targets: null, // defaults set; both can be 0 (None)
+      metrics:
+        Number(ans.heightCm) > 0 && Number(ans.weightKg) > 0
+          ? null
+          : "Height and weight are required.",
+      experience: null, // optional
+      review: canFinish(ans) ? null : "Please complete previous steps.",
+      processing: null,
+    };
+    return e;
+  }, [ans]);
+
+  const nextDisabled = !!errors[step as keyof typeof errors];
+
+  // Save handler with “processing” UX
+  const saveAll = async () => {
+    if (!user || saving) return;
+    if (!canFinish(ans)) {
+      setStep("metrics");
+      setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("metrics")));
+      return;
+    }
+    setSaving(true);
+    setProcError(null);
+    setStep("processing");
+
+    setTimeout(async () => {
       try {
-        setLoading(true);
+        // 1) profile
+        const profileRef = doc(db, "user_profiles", user.uid);
+        const existing = await getDoc(profileRef);
+        const payload = {
+          primaryGoal: ans.primaryGoal,
+          secondary: ans.secondary,
+          dietPattern: normDiet(ans.dietPattern),
+          exclusions: ans.exclusions,
+          exclusionsOther: ans.exclusionsOther || null,
+          activityLevel: mapActivity(ans.activityLevel),
+          currentWorkouts: mapWorkNow(ans.currentWorkouts),
+          targetSteps: Number(ans.targetSteps || 0),
+          targetWorkoutDays: Number(ans.targetWorkoutDays || 0),
+          heightCm: Number(ans.heightCm),
+          weightKg: Number(ans.weightKg),
+          bodyFatPct: ans.bodyFat ? Number(ans.bodyFat) : null,
+          experience: ans.experience || null,
+          stopReasons: ans.stopReasons || [],
+          stopOther: ans.stopOther || null,
+          updatedAt: serverTimestamp(),
+          createdAt:
+            existing.exists() ? existing.data()?.createdAt ?? serverTimestamp() : serverTimestamp(),
+        };
+        await setDoc(profileRef, payload, { merge: true });
+
+        // 2) habits (ensure existing types aren’t duplicated)
         const qRef = query(collection(db, "user_habits"), where("uid", "==", user.uid));
         const snap = await getDocs(qRef);
-        const types: string[] = [];
-        snap.forEach((d) => {
-          const data = d.data() as any;
-          if (data?.type && typeof data.type === "string") types.push(String(data.type));
-        });
-        setExistingTypes(types);
+        const have = new Set<string>();
+        snap.forEach((d) => d.data()?.type && have.add(String(d.data().type)));
+
+        // Food (always)
+        if (!have.has("eat_healthy")) {
+          const firstOpenTab = isMedicalGoal(ans.primaryGoal) ? "avoid" : undefined;
+          await addDoc(collection(db, "user_habits"), {
+            uid: user.uid,
+            type: "eat_healthy",
+            name: "Eat healthy",
+            answers: {
+              diet: normDiet(ans.dietPattern),
+              meals: ["breakfast", "lunch", "dinner"],
+              exclusions: ans.exclusions,
+              ...(firstOpenTab ? { firstOpenTab } : {}),
+            },
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        // Walking (only if target != None)
+        const steps = Number(ans.targetSteps || 0);
+        if (steps > 0 && !have.has("walking_10k")) {
+          await addDoc(collection(db, "user_habits"), {
+            uid: user.uid,
+            type: "walking_10k",
+            name: "Walking",
+            answers: { steps },
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        // Workout (only if target != None)
+        const days = Number(ans.targetWorkoutDays || 0);
+        if (days > 0 && !have.has("workout")) {
+          await addDoc(collection(db, "user_habits"), {
+            uid: user.uid,
+            type: "workout",
+            name: "Workout",
+            answers: { workoutDays: clamp(days, 1, 7) },
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        navigate("/dashboard", { replace: true });
       } catch (e: any) {
-        console.error(e);
-        setErr(e?.message || "Could not load your habits.");
-      } finally {
-        setLoading(false);
+        setProcError(e?.message || "Could not finish setup.");
+        setSaving(false);
       }
-    })();
-  }, [user]);
-
-  // ---------- ADD MODE (single habit — backward compatible)
-  const renderDynamicQuestionsAddMode = () => {
-    if (!selectedType) return null;
-
-    if (selectedType === "eat_healthy") {
-      const meals: string[] = answers.meals ?? ["breakfast", "lunch", "dinner"];
-      return (
-        <div className="space-y-3">
-          <label className="block text-sm text-slate-300">Diet preference</label>
-          <select
-            className="input"
-            value={answers.diet ?? "veg"} // default veg
-            onChange={(e) => setAnswers((s) => ({ ...s, diet: e.target.value }))}
-          >
-            <option value="veg">Vegetarian</option>
-            <option value="egg">Eggetarian</option>
-            <option value="nonveg">Non-vegetarian</option>
-          </select>
-
-          <label className="block text-sm text-slate-300">Meals to track</label>
-          <div className="flex gap-2 flex-wrap">
-            {(["breakfast", "lunch", "dinner"] as const).map((m) => {
-              const on = meals.includes(m);
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  className={`px-3 py-1 rounded-xl border ${
-                    on
-                      ? "bg-emerald-500/20 border-emerald-500/40"
-                      : "bg-slate-800/60 border-slate-700"
-                  }`}
-                  onClick={() => {
-                    const next = new Set(meals);
-                    if (on) next.delete(m);
-                    else next.add(m);
-                    const list = Array.from(next);
-                    setAnswers((s) => ({
-                      ...s,
-                      meals: list.length ? list : ["breakfast"], // keep at least one
-                    }));
-                  }}
-                >
-                  {m[0].toUpperCase() + m.slice(1)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    if (selectedType === "workout") {
-      const val = clamp(Number(answers.workoutDays ?? 3), 1, 7);
-      return (
-        <div className="space-y-3">
-          <label className="block text-sm text-slate-300">Target days/week</label>
-          <input
-            type="number"
-            min={1}
-            max={7}
-            className="input"
-            value={val}
-            onChange={(e) =>
-              setAnswers((s) => ({
-                ...s,
-                workoutDays: clamp(Number(e.target.value || 3), 1, 7),
-              }))
-            }
-          />
-          <p className="text-xs text-slate-400">Allowed range: 1–7 days/week.</p>
-        </div>
-      );
-    }
-
-    if (selectedType === "walking_10k") {
-      return (
-        <div className="space-y-3">
-          <label className="block text-sm text-slate-300">Daily step goal</label>
-          <input
-            type="number"
-            min={1000}
-            step={500}
-            className="input"
-            value={answers.steps ?? 5000}
-            onChange={(e) =>
-              setAnswers((s) => ({ ...s, steps: Number(e.target.value || 5000) }))
-            }
-          />
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const handleSaveAddMode = async () => {
-    if (!user || saving || !selectedType) return;
-
-    setSaving(true);
-    setErr(null);
-
-    try {
-      // Re-check current habits
-      const reQ = query(collection(db, "user_habits"), where("uid", "==", user.uid));
-      const reSnap = await getDocs(reQ);
-      const typesNow: string[] = [];
-      reSnap.forEach((d) => {
-        const data = d.data() as any;
-        if (data?.type) typesNow.push(String(data.type));
-      });
-
-      if (typesNow.includes(selectedType)) {
-        throw new Error(
-          `You already have ${selectedType.replaceAll("_", " ")} habit.`
-        );
-      }
-      if (typesNow.length >= 3) {
-        throw new Error("You can have up to 3 habits only.");
-      }
-
-      // Prepare safe answers (with clamps/defaults)
-      let safeAnswers = { ...answers };
-      if (selectedType === "eat_healthy") {
-        safeAnswers.diet = (safeAnswers.diet ?? "veg") as "veg" | "egg" | "nonveg";
-        const meals: string[] = safeAnswers.meals ?? ["breakfast", "lunch", "dinner"];
-        safeAnswers.meals = meals.length ? meals : ["breakfast"];
-      }
-      if (selectedType === "workout") {
-        safeAnswers.workoutDays = clamp(Number(safeAnswers.workoutDays ?? 3), 1, 7);
-      }
-
-      const meta = HABIT_OPTIONS.find((o) => o.type === selectedType)!;
-
-      await addDoc(collection(db, "user_habits"), {
-        uid: user.uid,
-        type: meta.type,
-        name: meta.name,
-        answers: safeAnswers,
-        createdAt: serverTimestamp(),
-      });
-
-      // mark onboarded
-      try {
-        markOnboarded(user.uid);
-        localStorage.setItem(`fv_onboarded_${user.uid}`, "1");
-      } catch {}
-
-      navigate("/dashboard", { replace: true });
-    } catch (e: any) {
-      console.error(e);
-      setErr(e?.message || "Could not save habit. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ---------- FIRST-TIME MULTI-STEP FLOW
-  const canProceedFood = useMemo(() => {
-    // With defaults, this is always OK if food.enabled, because diet is preselected and meals has ≥1.
-    return !food.enabled || (!!food.diet && food.meals.length > 0);
-  }, [food]);
-
-  const handleSaveFirstTime = async () => {
-    if (!user || saving) return;
-    setSaving(true);
-    setErr(null);
-
-    try {
-      // Fetch current to avoid duplicates and enforce max 3
-      const reQ = query(collection(db, "user_habits"), where("uid", "==", user.uid));
-      const reSnap = await getDocs(reQ);
-      const typesNow: string[] = [];
-      reSnap.forEach((d) => {
-        const data = d.data() as any;
-        if (data?.type) typesNow.push(String(data.type));
-      });
-
-      const created: string[] = [];
-      const canAddMore = (willAdd: number) =>
-        typesNow.length + created.length + willAdd <= 3;
-
-      // Food habit (safe defaults already in state)
-      if (food.enabled && canAddMore(1) && !typesNow.includes("eat_healthy")) {
-        const safeMeals =
-          food.meals && food.meals.length ? food.meals : (["breakfast"] as const);
-        await addDoc(collection(db, "user_habits"), {
-          uid: user.uid,
-          type: "eat_healthy",
-          name: "Eat healthy",
-          answers: { diet: food.diet ?? "veg", meals: safeMeals },
-          createdAt: serverTimestamp(),
-        });
-        created.push("eat_healthy");
-      }
-
-      // Walking habit
-      if (movement.walking && canAddMore(1) && !typesNow.includes("walking_10k")) {
-        await addDoc(collection(db, "user_habits"), {
-          uid: user.uid,
-          type: "walking_10k",
-          name: "Walking (10k steps)",
-          answers: { steps: goals.steps ?? 5000 },
-          createdAt: serverTimestamp(),
-        });
-        created.push("walking_10k");
-      }
-
-      // Workout habit (clamped 1–7)
-      if (movement.workout && canAddMore(1) && !typesNow.includes("workout")) {
-        const wd = clamp(Number(movement.workoutDays ?? 3), 1, 7);
-        await addDoc(collection(db, "user_habits"), {
-          uid: user.uid,
-          type: "workout",
-          name: "Workout",
-          answers: { workoutDays: wd },
-          createdAt: serverTimestamp(),
-        });
-        created.push("workout");
-      }
-
-      // Mark onboarded
-      try {
-        markOnboarded(user.uid);
-        localStorage.setItem(`fv_onboarded_${user.uid}`, "1");
-      } catch {}
-
-      navigate("/dashboard", { replace: true });
-    } catch (e: any) {
-      console.error(e);
-      setErr(e?.message || "Could not finish setup. Please try again.");
-    } finally {
-      setSaving(false);
-    }
+    }, 2200);
   };
 
   if (!user) return null;
@@ -352,321 +241,637 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Helmet>
-        <title>{mode === "add" ? "Add a habit" : "Welcome • Setup"} | Fitterverse</title>
-        <meta name="robots" content="noindex,nofollow" />
-        <link rel="canonical" href="https://fitterverse.in/onboarding" />
+        <title>Quick setup • Fitterverse</title>
+        <meta name="robots" content="noindex" />
       </Helmet>
 
-      <section className="max-w-3xl mx-auto px-4 sm:px-6 md:px-10 py-8 md:py-10">
-        <Card className="bg-slate-900/70 border-slate-800 p-5">
-          <h1 className="text-2xl md:text-3xl font-bold">
-            {mode === "add" ? "Add a habit" : "Quick setup"}
-          </h1>
+      <section className="max-w-3xl mx-auto px-4 sm:px-6 md:px-10 py-8">
+        <Card className="bg-slate-900/70 border-slate-800 p-5 md:p-6">
+          <h1 className="text-2xl md:text-3xl font-bold">Let’s personalize your plan</h1>
+          <p className="text-slate-300 mt-1 text-sm">2–3 minutes. Simple steps.</p>
 
-          {mode === "add" ? (
-            <>
-              <p className="mt-2 text-slate-300">
-                You can have up to <strong>3 habits</strong>. No duplicates.
-              </p>
+          {/* Progress */}
+          <div className="mt-4">
+            <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className="h-full bg-teal-500 transition-[width] duration-200"
+                style={{ width: `${Math.min(progressPct, 100)}%` }}
+                aria-valuenow={progressPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                role="progressbar"
+              />
+            </div>
 
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                {HABIT_OPTIONS.map((opt) => {
-                  const on = selectedType === opt.type;
-                  const exists = existingTypes.includes(opt.type);
-                  return (
-                    <button
-                      key={opt.type}
-                      type="button"
-                      disabled={exists}
-                      onClick={() => setSelectedType(opt.type)}
-                      className={`rounded-xl border px-3 py-3 text-left ${
-                        on
-                          ? "bg-emerald-500/20 border-emerald-500/40"
-                          : "bg-slate-900/60 border-slate-800"
-                      } ${exists ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <div className="font-semibold">{opt.name}</div>
-                      <div className="text-xs text-slate-400 mt-1">
-                        {exists ? "Already added" : opt.type}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+            {/* Step pills: lock forward nav */}
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              {ORDER.map((k, i) => {
+                const active = i === stepIndex;
+                const reachable = i <= furthestIdx + 1; // next immediate step allowed
+                return (
+                  <button
+                    key={k}
+                    onClick={() => reachable && goTo(k)}
+                    disabled={!reachable}
+                    className={`px-2 py-0.5 rounded-full border transition-colors ${
+                      active
+                        ? "bg-indigo-500/20 border-indigo-400"
+                        : "bg-slate-900/60 border-slate-800 hover:border-slate-600"
+                    } ${!reachable ? "opacity-40 cursor-not-allowed" : ""}`}
+                    aria-current={active ? "step" : undefined}
+                  >
+                    {i + 1}. {labelFor(k)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-              <div className="mt-6">{renderDynamicQuestionsAddMode()}</div>
+          <div className="mt-5">
+            {/* 1) Main goal (required) */}
+            {step === "goal" && (
+              <StepWrap
+                title="Main goal"
+                help="You can change this later."
+                nextDisabled={!!errors.goal}
+                onNext={() => {
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("secondary")));
+                  goTo("secondary");
+                }}
+              >
+                <ChipGroupSingle
+                  value={ans.primaryGoal}
+                  options={[
+                    "Lose fat",
+                    "Build muscle",
+                    "General fitness",
+                    "Manage PCOS",
+                    "Manage Diabetes",
+                    "Manage Thyroid",
+                  ]}
+                  onChange={(v) => setAns((s: any) => ({ ...s, primaryGoal: v }))}
+                />
+                {errors.goal && <InlineError text={errors.goal} />}
+              </StepWrap>
+            )}
 
-              {err && (
-                <div className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-                  {err}
+            {/* 2) Secondary focus (optional) */}
+            {step === "secondary" && (
+              <StepWrap
+                title="Secondary focus (optional)"
+                help="Pick anything that matters right now."
+                onBack={prevStep}
+                nextDisabled={false}
+                onNext={() => {
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("diet")));
+                  goTo("diet");
+                }}
+              >
+                <ChipGroupMulti
+                  values={ans.secondary}
+                  options={[
+                    "Energy & sleep",
+                    "Mobility/flexibility",
+                    "Cardio fitness",
+                    "Stress reduction",
+                    "Habit consistency",
+                  ]}
+                  onToggle={(v) => setAns((s: any) => ({ ...s, secondary: toggleSet(s.secondary, v) }))}
+                />
+              </StepWrap>
+            )}
+
+            {/* 3) Diet (diet pattern required) */}
+            {step === "diet" && (
+              <StepWrap
+                title="Diet pattern"
+                help="We’ll match recipes, grocery and foods-to-avoid."
+                onBack={prevStep}
+                nextDisabled={!!errors.diet}
+                onNext={() => {
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("activity")));
+                  goTo("activity");
+                }}
+              >
+                <div className="space-y-4">
+                  <ChipGroupSingle
+                    value={ans.dietPattern}
+                    options={["Veg", "Eggetarian", "Non-veg", "Vegan", "Jain"]}
+                    onChange={(v) => setAns((s: any) => ({ ...s, dietPattern: v }))}
+                  />
+                  <div>
+                    <div className="text-sm text-slate-300 mb-1">Exclusions (optional)</div>
+                    <ChipGroupMulti
+                      values={ans.exclusions}
+                      options={["No eggs", "No onion/garlic", "Lactose-free", "Gluten-free", "Nut allergy"]}
+                      onToggle={(v) =>
+                        setAns((s: any) => ({ ...s, exclusions: toggleSet(s.exclusions, v) }))
+                      }
+                    />
+                    <input
+                      className="mt-2 w-full rounded-lg bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm"
+                      placeholder="Other (optional)"
+                      value={ans.exclusionsOther}
+                      onChange={(e) =>
+                        setAns((s: any) => ({ ...s, exclusionsOther: e.target.value }))
+                      }
+                    />
+                  </div>
                 </div>
-              )}
+                {errors.diet && <InlineError text={errors.diet} />}
+              </StepWrap>
+            )}
 
-              <div className="mt-6 flex items-center justify-end gap-2">
-                <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveAddMode}
-                  disabled={
-                    !selectedType ||
-                    saving ||
-                    existingTypes.length >= 3 ||
-                    (!!selectedType && existingTypes.includes(String(selectedType)))
-                  }
-                  className="bg-teal-500 hover:bg-teal-400 text-black"
-                >
-                  {saving ? "Saving…" : "Save habit"}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* FIRST-TIME MULTI-STEP */}
-              <div className="mt-4">
-                {/* Tabs */}
-                <div className="flex gap-2 text-sm">
-                  {(["food", "movement", "goals", "review"] as StepKey[]).map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setStep(k)}
-                      className={`px-3 py-1 rounded-xl border ${
-                        step === k
-                          ? "bg-indigo-500/20 border-indigo-500/40"
-                          : "bg-slate-900/60 border-slate-800"
-                      }`}
-                    >
-                      {k[0].toUpperCase() + k.slice(1)}
-                    </button>
-                  ))}
+            {/* 4.1) Activity (required) */}
+            {step === "activity" && (
+              <StepWrap
+                title="Current activity"
+                help="A rough guess is okay."
+                onBack={prevStep}
+                nextDisabled={!!errors.activity}
+                onNext={() => {
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("workoutsNow")));
+                  goTo("workoutsNow");
+                }}
+              >
+                <ChipGroupSingle
+                  value={ans.activityLevel}
+                  options={[
+                    "Sedentary (<5k)",
+                    "Light (5–7k)",
+                    "Moderate (7–10k)",
+                    "Active (10k+)",
+                    "Very active",
+                  ]}
+                  onChange={(v) => setAns((s: any) => ({ ...s, activityLevel: v }))}
+                />
+                {errors.activity && <InlineError text={errors.activity} />}
+              </StepWrap>
+            )}
+
+            {/* 4.2) Workouts now (required) */}
+            {step === "workoutsNow" && (
+              <StepWrap
+                title="Current workouts"
+                onBack={prevStep}
+                nextDisabled={!!errors.workoutsNow}
+                onNext={() => {
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("targets")));
+                  goTo("targets");
+                }}
+              >
+                <ChipGroupSingle
+                  value={ans.currentWorkouts}
+                  options={["None", "≤1×/wk", "2–3×/wk", "4–5×/wk", "6–7×/wk"]}
+                  onChange={(v) => setAns((s: any) => ({ ...s, currentWorkouts: v }))}
+                />
+                {errors.workoutsNow && <InlineError text={errors.workoutsNow} />}
+              </StepWrap>
+            )}
+
+            {/* 4.3) Targets (can be 0 / None) */}
+            {step === "targets" && (
+              <StepWrap
+                title="Targets for week one"
+                help="Pick what’s realistic. You can change this later."
+                onBack={prevStep}
+                nextDisabled={false}
+                onNext={() => {
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("metrics")));
+                  goTo("metrics");
+                }}
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <div className="text-sm text-slate-300 mb-1">Walking target</div>
+                    <ChipGroupSingle
+                      value={String(ans.targetSteps)}
+                      options={["0", "5000", "7000", "10000"]}
+                      labels={{ "0": "None", "5000": "5k", "7000": "7k", "10000": "10k" }}
+                      onChange={(v) => setAns((s: any) => ({ ...s, targetSteps: Number(v) }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm text-slate-300 mb-1">Workout days/week</div>
+                    <ChipGroupSingle
+                      value={String(ans.targetWorkoutDays)}
+                      options={["0", "2", "3", "4", "5", "6", "7"]}
+                      labels={{
+                        "0": "None",
+                        "2": "2",
+                        "3": "3",
+                        "4": "4",
+                        "5": "5",
+                        "6": "6",
+                        "7": "7",
+                      }}
+                      onChange={(v) =>
+                        setAns((s: any) => ({
+                          ...s,
+                          targetWorkoutDays: clamp(Number(v), 0, 7),
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
+              </StepWrap>
+            )}
 
-                {/* Panels */}
-                {step === "food" && (
-                  <div className="mt-5 space-y-4">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={food.enabled}
-                        onChange={(e) => setFood((s) => ({ ...s, enabled: e.target.checked }))}
-                      />
-                      <span className="text-slate-200">Track healthy food</span>
-                    </label>
+            {/* 5) Metrics (height & weight required; body fat optional) */}
+            {step === "metrics" && (
+              <StepWrap
+                title="Your current stats"
+                help="Used only to personalize your plan."
+                onBack={prevStep}
+                nextDisabled={!!errors.metrics}
+                onNext={() => {
+                  if (errors.metrics) return;
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("experience")));
+                  goTo("experience");
+                }}
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <LabeledInput
+                    label="Height (cm) *"
+                    value={ans.heightCm}
+                    onChange={(v) => setAns((s: any) => ({ ...s, heightCm: v }))}
+                    type="number"
+                  />
+                  <LabeledInput
+                    label="Weight (kg) *"
+                    value={ans.weightKg}
+                    onChange={(v) => setAns((s: any) => ({ ...s, weightKg: v }))}
+                    type="number"
+                  />
+                  <LabeledInput
+                    label="Body fat % (optional)"
+                    value={ans.bodyFat}
+                    onChange={(v) => setAns((s: any) => ({ ...s, bodyFat: v }))}
+                    type="number"
+                  />
+                </div>
+                {errors.metrics && <InlineError text={errors.metrics} />}
+              </StepWrap>
+            )}
 
-                    {food.enabled && (
-                      <>
-                        <div>
-                          <div className="text-sm text-slate-300 mb-1">Diet preference</div>
-                          <div className="flex gap-2 flex-wrap">
-                            {(["veg", "egg", "nonveg"] as const).map((d) => (
-                              <button
-                                key={d}
-                                type="button"
-                                className={`px-3 py-1 rounded-xl border ${
-                                  food.diet === d
-                                    ? "bg-emerald-500/20 border-emerald-500/40"
-                                    : "bg-slate-800/60 border-slate-700"
-                                }`}
-                                onClick={() => setFood((s) => ({ ...s, diet: d }))}
-                              >
-                                {d === "veg" ? "Vegetarian" : d === "egg" ? "Eggetarian" : "Non-veg"}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-sm text-slate-300 mb-1">Meals to track</div>
-                          <div className="flex gap-2 flex-wrap">
-                            {(["breakfast", "lunch", "dinner"] as const).map((m) => {
-                              const on = food.meals.includes(m);
-                              return (
-                                <button
-                                  key={m}
-                                  type="button"
-                                  className={`px-3 py-1 rounded-xl border ${
-                                    on
-                                      ? "bg-emerald-500/20 border-emerald-500/40"
-                                      : "bg-slate-800/60 border-slate-700"
-                                  }`}
-                                  onClick={() => {
-                                    const next = new Set(food.meals);
-                                    if (on) next.delete(m);
-                                    else next.add(m);
-                                    const list = Array.from(next);
-                                    setFood((s) => ({
-                                      ...s,
-                                      meals: (list.length ? list : ["breakfast"]) as Array<
-                                        "breakfast" | "lunch" | "dinner"
-                                      >,
-                                    }));
-                                  }}
-                                >
-                                  {m[0].toUpperCase() + m.slice(1)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </>
-                    )}
+            {/* 6) Experience & support (optional) */}
+            {step === "experience" && (
+              <StepWrap
+                title="So we can support you better (optional)"
+                onBack={prevStep}
+                nextDisabled={false}
+                onNext={() => {
+                  setFurthestIdx(Math.max(furthestIdx, ORDER.indexOf("review")));
+                  goTo("review");
+                }}
+                extra={<button className="text-sky-400 text-sm" onClick={() => goTo("review")}>Skip</button>}
+              >
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm text-slate-300 mb-1">Past attempts</div>
+                    <ChipGroupSingle
+                      value={ans.experience}
+                      options={[
+                        { label: "First time", value: "first_time" },
+                        { label: "Tried on my own", value: "self" },
+                        { label: "Program/coach", value: "program" },
+                        { label: "Used apps", value: "apps" },
+                        { label: "On & off", value: "inconsistent" },
+                      ]}
+                      onChange={(v) => setAns((s: any) => ({ ...s, experience: v }))}
+                    />
                   </div>
-                )}
 
-                {step === "movement" && (
-                  <div className="mt-5 space-y-4">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={movement.walking}
-                        onChange={(e) => setMovement((s) => ({ ...s, walking: e.target.checked }))}
-                      />
-                      <span className="text-slate-200">Walking</span>
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={movement.workout}
-                        onChange={(e) => setMovement((s) => ({ ...s, workout: e.target.checked }))}
-                      />
-                      <span className="text-slate-200">Workout</span>
-                    </label>
-
-                    {movement.workout && (
-                      <div>
-                        <div className="text-sm text-slate-300 mb-1">Workout days/week</div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={7}
-                          className="input"
-                          value={movement.workoutDays}
-                          onChange={(e) =>
-                            setMovement((s) => ({
-                              ...s,
-                              workoutDays: clamp(Number(e.target.value || 3), 1, 7),
-                            }))
-                          }
-                        />
-                        <p className="text-xs text-slate-400 mt-1">Allowed range: 1–7.</p>
-                      </div>
-                    )}
+                  <div>
+                    <div className="text-sm text-slate-300 mb-1">What usually makes you stop? (optional)</div>
+                    <ChipGroupMulti
+                      values={ans.stopReasons}
+                      options={[
+                        "Time/energy",
+                        "Travel/routine",
+                        "Boring meals",
+                        "Soreness/injury",
+                        "Motivation dips",
+                        "Budget/food access",
+                      ]}
+                      onToggle={(v) =>
+                        setAns((s: any) => ({ ...s, stopReasons: toggleSet(s.stopReasons, v) }))
+                      }
+                    />
+                    <input
+                      className="mt-2 w-full rounded-lg bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm"
+                      placeholder="Other (optional)"
+                      value={ans.stopOther}
+                      onChange={(e) => setAns((s: any) => ({ ...s, stopOther: e.target.value }))}
+                    />
                   </div>
-                )}
+                </div>
+              </StepWrap>
+            )}
 
-                {step === "goals" && (
-                  <div className="mt-5 space-y-4">
-                    <div>
-                      <label className="block text-sm text-slate-300">Daily steps goal</label>
-                      <input
-                        type="number"
-                        min={1000}
-                        step={500}
-                        className="input"
-                        value={goals.steps ?? 5000}
-                        onChange={(e) =>
-                          setGoals((s) => ({ ...s, steps: Number(e.target.value || 5000) }))
-                        }
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm text-slate-300">Weight loss target (kg)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        className="input"
-                        value={goals.weightLossKg ?? ""}
-                        onChange={(e) =>
-                          setGoals((s) => ({
-                            ...s,
-                            weightLossKg: e.target.value ? Number(e.target.value) : undefined,
-                          }))
-                        }
-                        placeholder="optional"
-                      />
-                    </div>
+            {/* Review */}
+            {step === "review" && (
+              <StepWrap
+                title="Review"
+                onBack={prevStep}
+                primaryLabel="Finish setup"
+                primaryDisabled={!canFinish(ans) || saving}
+                onPrimary={saveAll}
+              >
+                <div className="text-sm text-slate-300 space-y-1">
+                  <div>
+                    Main goal: <b>{ans.primaryGoal}</b>
                   </div>
-                )}
-
-                {step === "review" && (
-                  <div className="mt-5 space-y-2 text-sm text-slate-300">
-                    <div>
-                      Food:{" "}
-                      {food.enabled
-                        ? `${food.diet} • ${food.meals.join(", ")}`
-                        : "Not enabled"}
-                    </div>
-                    <div>Walking: {movement.walking ? "Yes" : "No"}</div>
-                    <div>
-                      Workout:{" "}
-                      {movement.workout ? `${movement.workoutDays} days/week` : "No"}
-                    </div>
-                    <div>Steps goal: {goals.steps ?? 5000}</div>
-                    <div>Weight loss target: {goals.weightLossKg ?? "—"}</div>
-                  </div>
-                )}
-
-                {err && (
-                  <div className="mt-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-                    {err}
-                  </div>
-                )}
-
-                <div className="mt-6 flex items-center justify-between gap-2">
-                  <Button variant="ghost" onClick={() => navigate("/dashboard")}>
-                    Skip
-                  </Button>
-                  <div className="flex gap-2">
-                    {step !== "food" && (
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          setStep((prev) =>
-                            prev === "movement" ? "food" : prev === "goals" ? "movement" : "goals"
-                          )
-                        }
-                      >
-                        Back
-                      </Button>
-                    )}
-                    {step !== "review" ? (
-                      <Button
-                        onClick={() => {
-                          if (step === "food" && !canProceedFood) return;
-                          setStep((prev) =>
-                            prev === "food" ? "movement" : prev === "movement" ? "goals" : "review"
-                          );
-                        }}
-                        disabled={step === "food" && !canProceedFood}
-                        className="bg-indigo-500 hover:bg-indigo-400 text-black"
-                      >
-                        Next
-                      </Button>
+                  <div>
+                    Secondary:{" "}
+                    {ans.secondary?.length ? (
+                      <b>{ans.secondary.join(", ")}</b>
                     ) : (
-                      <Button
-                        onClick={handleSaveFirstTime}
-                        disabled={
-                          saving ||
-                          (food.enabled && (!food.diet || food.meals.length === 0)) ||
-                          (movement.workout &&
-                            (movement.workoutDays < 1 || movement.workoutDays > 7))
-                        }
-                        className="bg-teal-500 hover:bg-teal-400 text-black"
-                      >
-                        {saving ? "Setting up…" : "Finish setup"}
-                      </Button>
+                      <span className="text-slate-400">—</span>
                     )}
                   </div>
+                  <div>
+                    Diet: <b>{ans.dietPattern}</b>
+                    {ans.exclusions?.length ? (
+                      <> • Exclusions: <b>{ans.exclusions.join(", ")}</b></>
+                    ) : null}
+                  </div>
+                  <div>
+                    Activity: <b>{ans.activityLevel}</b> • Workouts now: <b>{ans.currentWorkouts}</b>
+                  </div>
+                  <div>
+                    Targets: Walking <b>{ans.targetSteps ? `${ans.targetSteps.toLocaleString()} steps` : "None"}</b>
+                    {" • "}Workouts <b>{ans.targetWorkoutDays ? `${ans.targetWorkoutDays}×/wk` : "None"}</b>
+                  </div>
+                  <div>
+                    Stats: <b>{ans.heightCm || "—"} cm</b> • <b>{ans.weightKg || "—"} kg</b> • Body fat{" "}
+                    <b>{ans.bodyFat || "—"}%</b>
+                  </div>
                 </div>
+              </StepWrap>
+            )}
+
+            {/* Processing */}
+            {step === "processing" && (
+              <div className="text-center">
+                <Card className="bg-slate-900/80 border-slate-800 p-6">
+                  <h3 className="text-xl font-semibold">Building your starter plan…</h3>
+                  <p className="text-slate-300 mt-1">
+                    We’re setting up your habits, recipes and grocery list based on your answers.
+                  </p>
+                  <div className="mt-4 h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full w-1/3 bg-teal-500 animate-pulse" />
+                  </div>
+                  {procError && (
+                    <div className="mt-4 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                      {procError}
+                      <div className="mt-2">
+                        <Button onClick={saveAll} className="bg-teal-500 hover:bg-teal-400 text-black">
+                          Try again
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
               </div>
-            </>
-          )}
+            )}
+          </div>
         </Card>
       </section>
     </div>
   );
+}
+
+/* ======= Small presentational helpers ======= */
+
+function StepWrap({
+  title,
+  help,
+  children,
+  onBack,
+  onNext,
+  nextDisabled,
+  primaryLabel = "Next",
+  primaryDisabled,
+  onPrimary,
+  extra,
+}: {
+  title: string;
+  help?: string;
+  children: React.ReactNode;
+  onBack?: () => void;
+  onNext?: () => void;
+  nextDisabled?: boolean;
+  primaryLabel?: string;
+  primaryDisabled?: boolean;
+  onPrimary?: () => void;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <div>
+      <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+      {help && <p className="text-slate-300 text-sm mt-1">{help}</p>}
+      <div className="mt-4">{children}</div>
+      <div className="mt-6 flex items-center justify-between">
+        {onBack ? (
+          <Button variant="ghost" onClick={onBack}>
+            Back
+          </Button>
+        ) : (
+          <span className="text-slate-400">Skip</span>
+        )}
+        <div className="flex items-center gap-3">
+          {extra}
+          {onPrimary ? (
+            <Button
+              onClick={onPrimary}
+              disabled={!!primaryDisabled}
+              className="bg-teal-500 hover:bg-teal-400 text-black"
+            >
+              {primaryLabel}
+            </Button>
+          ) : (
+            <Button
+              onClick={onNext}
+              disabled={!!nextDisabled}
+              className="bg-indigo-500 hover:bg-indigo-400 text-black disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InlineError({ text }: { text: string }) {
+  return (
+    <div className="mt-3 text-xs text-rose-300">
+      {text}
+    </div>
+  );
+}
+
+function Chip({
+  selected,
+  label,
+  onClick,
+}: {
+  selected: boolean;
+  label: string | React.ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-4 py-2 rounded-xl border text-sm transition-all
+        ${selected ? "bg-teal-500/20 border-teal-400"
+                   : "bg-slate-900/60 border-slate-800 hover:border-slate-600"}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ChipGroupSingle({
+  value,
+  options,
+  onChange,
+  labels,
+}: {
+  value: string | null;
+  options: (string | { label: string; value: string })[];
+  onChange: (v: string) => void;
+  labels?: Record<string, string>;
+}) {
+  const renderLabel = (v: string) => (labels?.[v] ?? v);
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => {
+        const v = typeof o === "string" ? o : o.value;
+        const lab = typeof o === "string" ? o : o.label;
+        return (
+          <Chip
+            key={v}
+            selected={value === v}
+            label={labels ? renderLabel(v) : lab}
+            onClick={() => onChange(v)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ChipGroupMulti({
+  values,
+  options,
+  onToggle,
+}: {
+  values: string[];
+  options: string[];
+  onToggle: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => (
+        <Chip key={o} selected={values.includes(o)} label={o} onClick={() => onToggle(o)} />
+      ))}
+    </div>
+  );
+}
+
+function LabeledInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="text-sm text-slate-300">{label}</label>
+      <input
+        type={type}
+        className="mt-1 w-full rounded-lg bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+function labelFor(k: StepKey) {
+  switch (k) {
+    case "goal":
+      return "Goal";
+    case "secondary":
+      return "Secondary";
+    case "diet":
+      return "Diet";
+    case "activity":
+      return "Activity";
+    case "workoutsNow":
+      return "Workouts";
+    case "targets":
+      return "Targets";
+    case "metrics":
+      return "Metrics";
+    case "experience":
+      return "Experience";
+    case "review":
+      return "Review";
+    default:
+      return "Processing";
+  }
+}
+
+function canFinish(ans: any) {
+  const heightOk = Number(ans.heightCm) > 0;
+  const weightOk = Number(ans.weightKg) > 0;
+  return !!ans.primaryGoal && !!ans.dietPattern && !!ans.activityLevel && !!ans.currentWorkouts && heightOk && weightOk;
+}
+
+function toggleSet(list: string[], value: string): string[] {
+  const s = new Set(list);
+  s.has(value) ? s.delete(value) : s.add(value);
+  return Array.from(s);
+}
+
+function normDiet(p: string): "veg" | "egg" | "nonveg" | "vegan" | "jain" {
+  const s = p.toLowerCase();
+  if (s.includes("egg")) return "egg";
+  if (s.includes("non")) return "nonveg";
+  if (s.includes("vegan")) return "vegan";
+  if (s.includes("jain")) return "jain";
+  return "veg";
+}
+
+function mapActivity(l: string) {
+  if (l.startsWith("Sedentary")) return "sedentary";
+  if (l.startsWith("Light")) return "light";
+  if (l.startsWith("Moderate")) return "moderate";
+  if (l.startsWith("Active")) return "active";
+  return "very_active";
+}
+
+function mapWorkNow(w: string) {
+  switch (w) {
+    case "None":
+      return "none";
+    case "≤1×/wk":
+      return "occasional";
+    case "2–3×/wk":
+      return "regular";
+    case "4–5×/wk":
+      return "consistent";
+    default:
+      return "athlete";
+  }
 }

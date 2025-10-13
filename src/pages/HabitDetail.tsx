@@ -14,7 +14,10 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/state/authStore";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import DietMealTracker from "@/components/DietMealTracker";
+
+// ⬇️ Use the full detail card for Diet (replaces old DietMealTracker)
+import DietHabitCard from "@/components/DietHabitCard";
+
 import {
   ymd,
   toggleDayDone,
@@ -24,21 +27,21 @@ import {
 
 type HabitDoc = {
   uid: string;
-  type: string;        // "eat_healthy" | "walking_10k" | "workout" | …
+  type: string; // "eat_healthy" | "walking_10k" | "workout" | …
   name: string;
   answers?: Record<string, any>;
   createdAt?: any;
 };
 
 type HabitLog = {
-  localDate: string;   // "YYYY-MM-DD"
+  localDate: string; // "YYYY-MM-DD"
   done?: boolean;
   ts?: number;
   meals?: {
     breakfast?: "yes" | "partial" | "no" | "skip";
     lunch?: "yes" | "partial" | "no" | "skip";
     dinner?: "yes" | "partial" | "no" | "skip";
-  }
+  };
 };
 
 function daysBack(date: Date, n: number) {
@@ -115,6 +118,7 @@ export default function HabitDetail() {
           setHabit(null);
           setError("Habit not found.");
         } else {
+          // include id so child cards can use it if needed
           setHabit({ ...data });
         }
         setLoadingHabit(false);
@@ -238,7 +242,11 @@ export default function HabitDetail() {
               <Button
                 onClick={() => toggleForDate(today)}
                 disabled={saving}
-                className={todayDone ? "bg-amber-400 hover:bg-amber-300 text-black" : "bg-teal-500 hover:bg-teal-400 text-black"}
+                className={
+                  todayDone
+                    ? "bg-amber-400 hover:bg-amber-300 text-black"
+                    : "bg-teal-500 hover:bg-teal-400 text-black"
+                }
                 title={todayDone ? "Undo today" : "Mark today done"}
               >
                 {saving ? "Updating…" : todayDone ? "Undo today" : "Mark today done"}
@@ -257,16 +265,14 @@ export default function HabitDetail() {
               </Card>
               <Card className="bg-slate-900/70 border-slate-800 p-4 text-center">
                 <div className="text-xs text-slate-400">Today</div>
-                <div className="mt-1 text-2xl font-bold">
-                  {todayDone ? "✅" : "—"}
-                </div>
+                <div className="mt-1 text-2xl font-bold">{todayDone ? "✅" : "—"}</div>
               </Card>
             </div>
 
             {/* Diet tracker appears only for eat_healthy */}
             {habit.type === "eat_healthy" && (
               <Card className="bg-slate-900/70 border-slate-800 p-5">
-                <DietMealTracker habitId={id!} />
+                <DietHabitCard habitId={id!} onOpenTracker={() => {}} />
               </Card>
             )}
 
@@ -274,7 +280,8 @@ export default function HabitDetail() {
             <Card className="bg-slate-900/70 border-slate-800 p-5 mt-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">
-                  {first.toLocaleString(undefined, { month: "long" })} {first.getFullYear()}
+                  {first.toLocaleString(undefined, { month: "long" })}{" "}
+                  {first.getFullYear()}
                 </h3>
                 <div className="text-xs text-slate-400">
                   Showing {first.toLocaleDateString()} – {last.toLocaleDateString()}
@@ -283,8 +290,10 @@ export default function HabitDetail() {
 
               {/* Weekday headers */}
               <div className="grid grid-cols-7 text-center text-xs text-slate-400 mb-2">
-                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((w) => (
-                  <div key={w} className="py-1">{w}</div>
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w) => (
+                  <div key={w} className="py-1">
+                    {w}
+                  </div>
                 ))}
               </div>
 
@@ -312,7 +321,9 @@ export default function HabitDetail() {
                       <button
                         key={`${ri}-${ci}`}
                         type="button"
-                        className={`${base} ${tone} ${canEdit ? "hover:ring-1 hover:ring-indigo-400/60" : "cursor-default"}`}
+                        className={`${base} ${tone} ${
+                          canEdit ? "hover:ring-1 hover:ring-indigo-400/60" : "cursor-default"
+                        }`}
                         title={
                           canEdit
                             ? isToday
@@ -339,7 +350,8 @@ export default function HabitDetail() {
                 )}
               </div>
               <p className="mt-2 text-xs text-slate-400">
-                You can toggle <strong>today</strong> instantly and <strong>yesterday</strong> with confirmation. Older dates are read-only.
+                You can toggle <strong>today</strong> instantly and <strong>yesterday</strong> with
+                confirmation. Older dates are read-only.
               </p>
             </Card>
 
