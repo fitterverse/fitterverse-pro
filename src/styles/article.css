@@ -1,0 +1,269 @@
+/* =========================================================
+   Fitterverse — Article UI (light theme, responsive)
+   Mobile-first, fluid type, tight vertical rhythm.
+   ======================================================= */
+
+/* ---------- CSS variables for easy tuning ---------- */
+:root {
+  --fv-bg: #ffffff;
+  --fv-fg: #0f172a;            /* slate-900 */
+  --fv-fg-subtle: #334155;     /* slate-700 */
+  --fv-fg-muted: #475569;      /* slate-600 */
+  --fv-border: #e2e8f0;        /* slate-200 */
+  --fv-border-strong: #cbd5e1; /* slate-300 */
+  --fv-surface: #f8fafc;       /* slate-50 */
+  --fv-accent: #0ea5e9;        /* sky-500 */
+  --fv-accent-strong: #0284c7; /* sky-600 */
+  --fv-teal: #14b8a6;          /* teal-500 */
+
+  /* Fluid type scale */
+  --fz-0: clamp(0.86rem, 0.2vw + 0.8rem, 0.95rem);
+  --fz-1: clamp(1rem, 0.3vw + 0.95rem, 1.07rem);
+  --fz-2: clamp(1.12rem, 0.5vw + 1rem, 1.25rem);
+  --fz-3: clamp(1.35rem, 0.8vw + 1.05rem, 1.5rem);
+  --fz-4: clamp(1.65rem, 1.2vw + 1.1rem, 1.9rem);
+  --fz-5: clamp(2.0rem, 1.8vw + 1.2rem, 2.4rem);
+}
+
+/* ---------- Shell ---------- */
+.article-shell {
+  background: var(--fv-bg);
+  color: var(--fv-fg);
+  /* never allow sideways scroll on phones */
+  overflow-x: hidden;
+}
+
+/* Ensure nested boxes don't overflow width */
+.article-shell, .article-shell * {
+  box-sizing: border-box;
+}
+
+/* ---------- Layout ---------- */
+.article-wrap {
+  display: grid;
+  grid-template-columns: 1fr; /* single column (no sticky sidebar) */
+  gap: 20px;
+}
+
+/* card that holds the article */
+.article-card {
+  background: #fff;
+  border: 1px solid var(--fv-border);
+  border-radius: 16px;
+  padding: 20px;
+  max-width: 100%;
+}
+@media (min-width: 640px){ .article-card { padding: 28px; } }
+@media (min-width: 768px){ .article-card { padding: 36px; } }
+
+/* ---------- Meta & header ---------- */
+.article-meta {
+  color: var(--fv-fg-muted);
+  font-size: var(--fz-0);
+}
+
+/* ---------- Typography ---------- */
+.article-content {
+  font-size: var(--fz-1);
+  line-height: 1.8;
+  color: var(--fv-fg);
+  max-width: 68ch;
+  margin-inline: auto;
+  /* long words/links/headings never overflow */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.article-content h1,
+.article-content h2,
+.article-content h3,
+.article-content h4 {
+  color: var(--fv-fg);
+  line-height: 1.2;
+  font-weight: 800;
+  margin: 1.6em 0 0.6em;
+}
+.article-content h1 { font-size: var(--fz-5); }
+.article-content h2 { font-size: var(--fz-4); border-top: 1px solid var(--fv-border); padding-top: 1rem; }
+.article-content h3 { font-size: var(--fz-3); }
+.article-content h4 { font-size: var(--fz-2); font-weight: 700; }
+
+.article-content p { margin: 0.9em 0; }
+.article-content strong { font-weight: 700; }
+
+.article-content ul,
+.article-content ol {
+  margin: 0.75em 0 1.25em 1.25em;
+  padding: 0;
+}
+.article-content li { margin: 0.35em 0; }
+
+/* Links */
+.article-content a {
+  color: var(--fv-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.article-content a:hover { color: var(--fv-accent-strong); }
+.article-content a:focus-visible {
+  outline: 2px dashed var(--fv-accent);
+  outline-offset: 2px;
+}
+
+/* Callouts / quotes */
+.article-content blockquote {
+  margin: 1.2em 0;
+  padding: 0.85em 1em;
+  border-left: 4px solid var(--fv-teal);
+  background: var(--fv-surface);
+  color: var(--fv-fg);
+  border-radius: 8px;
+}
+
+/* Figures & images */
+.article-content figure { margin: 1.2em 0; }
+.article-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--fv-border);
+  display: block;
+  margin: 0.5rem auto;
+}
+.article-content figcaption {
+  text-align: center;
+  font-size: var(--fz-0);
+  color: var(--fv-fg-muted);
+  margin-top: 0.35rem;
+}
+
+/* Tables */
+.article-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: var(--fz-1);
+  /* no overflow on mobile */
+  display: block;
+  overflow: auto;
+}
+.article-content th, .article-content td {
+  border: 1px solid var(--fv-border);
+  padding: 8px 10px;
+  /* keep wrapping inside cells */
+  white-space: normal;
+}
+.article-content th {
+  background: #f1f5f9;
+  text-align: left;
+}
+
+/* Code */
+.article-content code {
+  background: var(--fv-surface);
+  border: 1px solid var(--fv-border);
+  border-radius: 6px;
+  padding: 0 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.article-content pre {
+  background: #0b1220;
+  color: #e2e8f0;
+  overflow: auto;
+  border-radius: 10px;
+  padding: 14px;
+  border: 1px solid #1f2937;
+}
+
+/* ---------- On this page (ToC) ---------- */
+.toc {
+  border: 1px solid var(--fv-border);
+  border-radius: 12px;
+  background: var(--fv-surface);
+  padding: 12px 14px;
+  max-width: 100%;
+}
+.toc-title {
+  font-weight: 800;
+  margin: 0 0 8px 0;
+  color: var(--fv-fg);
+}
+.toc-list {
+  list-style: none; margin: 0; padding: 0;
+  font-size: var(--fz-0);
+}
+.toc-list li { margin: 6px 0; }
+.toc-list a {
+  color: var(--fv-accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  display: inline-block;
+  padding: 2px 0;
+}
+.toc-list a:hover { color: var(--fv-accent); }
+.toc-active { color: var(--fv-accent); }
+
+/* ---------- References ---------- */
+.refs { max-width: 68ch; margin-inline: auto; }
+.refs-list {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: .5rem 0 0;
+}
+.refs-list li { margin: .35rem 0; }
+.refs-list a {
+  color: var(--fv-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.refs-list a:hover { color: var(--fv-accent-strong); }
+.refs-note { color: var(--fv-fg-muted); }
+
+/* ---------- Recommended posts ---------- */
+.related { margin-top: 32px; }
+.related h3 { margin: 0 0 12px 0; font-size: var(--fz-3); }
+.related-grid {
+  display: grid; grid-template-columns: 1fr; gap: 12px;
+}
+.related-card {
+  border: 1px solid var(--fv-border);
+  border-radius: 12px;
+  padding: 14px;
+  background: #fff;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.related-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(2, 8, 23, .06);
+}
+.related-card a { color: var(--fv-fg); text-decoration: none; }
+.related-card a:hover { text-decoration: underline; }
+.related-card .desc { color: var(--fv-fg-muted); font-size: var(--fz-0); margin-top: 4px; }
+@media (min-width: 640px) { .related-grid { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- CTA / comments ---------- */
+.article-cta {
+  background: var(--fv-surface);
+  border: 1px solid var(--fv-border);
+  border-radius: 12px;
+  padding: 16px;
+  overflow-wrap: anywhere;    /* keep long text inside */
+  max-width: 100%;
+}
+.article-cta input,
+.article-cta textarea {
+  max-width: 100%;
+  width: 100%;
+  display: block;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- Mobile helpers ---------- */
+@media (max-width: 480px) {
+  .article-card { padding: 18px; border-radius: 14px; }
+  .article-content { line-height: 1.85; }
+}

@@ -31,4 +31,16 @@
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
+  <url>
+    <loc>https://fitterverse.in/blog/fitness</loc>
+    <lastmod>2025-10-06T10:42:33.373Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://fitterverse.in/blog/fitness/10-minute-home-workout-ultimate</loc>
+    <lastmod>2025-10-07T00:00:00.000Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>
