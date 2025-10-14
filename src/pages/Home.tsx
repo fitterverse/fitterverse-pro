@@ -22,6 +22,16 @@ export default function Home() {
   const OG_IMAGE_WIDTH = "1200";
   const OG_IMAGE_HEIGHT = "800";
 
+  // TS-safe priority set for the hero <img>
+  const heroImgRef = React.useRef<HTMLImageElement | null>(null);
+  React.useEffect(() => {
+    if (heroImgRef.current) {
+      try {
+        heroImgRef.current.setAttribute("fetchpriority", "high");
+      } catch {}
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Helmet>
@@ -147,11 +157,11 @@ export default function Home() {
               <picture>
                 <source srcSet={OG_IMAGE} type="image/jpeg" />
                 <img
+                  ref={heroImgRef}
                   src={OG_IMAGE}
                   alt="Healthy habit routine—shoes, mat, and a simple plan"
                   className="h-72 w-full object-cover md:h-[420px]"
                   loading="eager"
-                  fetchpriority="high"
                   decoding="async"
                   width={1200}
                   height={800}
