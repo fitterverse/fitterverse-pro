@@ -24,48 +24,53 @@ type LogDoc = {
 
 const MEALS: Meal[] = ["breakfast", "lunch", "dinner"];
 
-const ymd = (d: Date) =>
-  `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, "0")}-${`${d.getDate()}`.padStart(2, "0")}`;
-
-function toScore(v?: MealState) {
+function ymd(d: Date) {
+  const y = d.getFullYear();
+  const m = `${d.getMonth() + 1}`.padStart(2, "0");
+  const da = `${d.getDate()}`.padStart(2, "0");
+  return `${y}-${m}-${da}`;
+}
+function toScore(v?: MealState): 1 | 0.5 | 0 | -1 {
   if (v === "yes") return 1;
   if (v === "partial") return 0.5;
   if (v === "no") return 0;
   return -1;
 }
-const barColor = (pct: number) =>
-  pct >= 85 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-slate-600";
-const heatColor = (v: number) =>
-  v < 0 ? "bg-slate-800" : v >= 1 ? "bg-emerald-500/70" : v >= 0.5 ? "bg-amber-500/70" : "bg-slate-700";
+function barColor(pct: number) {
+  if (pct >= 85) return "bg-emerald-500";
+  if (pct >= 50) return "bg-amber-500";
+  return "bg-slate-600";
+}
+function heatColor(v: number) {
+  if (v < 0) return "bg-slate-800";
+  if (v >= 1) return "bg-emerald-500/70";
+  if (v >= 0.5) return "bg-amber-500/70";
+  return "bg-slate-700";
+}
 
-/* Sounds: tries /sfx/<name>.mp3 then .wav; silently ignores if missing */
+// Sounds
 function useSFX() {
-  const cache = useRef<{ [src: string]: HTMLAudioElement | null }>({});
-  const getAudio = (base: string) => {
-    for (const src of [`${base}.mp3`, `${base}.wav`]) {
+  const cache = useRef<{ [k: string]: HTMLAudioElement | null }>({});
+  const play = (name: "success" | "partial" | "streak") => {
+    const src =
+      name === "success"
+        ? "/sfx/success.wav"
+        : name === "partial"
+        ? "/sfx/partial.wav"
+        : "/sfx/streak.wav";
+    try {
       if (!cache.current[src]) {
-        try {
-          const a = new Audio(src);
-          a.volume = 0.5;
-          cache.current[src] = a;
-          return a;
-        } catch {
-          cache.current[src] = null;
-        }
-      } else if (cache.current[src]) return cache.current[src]!;
-    }
-    return null;
+        const a = new Audio(src);
+        a.volume = 0.5;
+        cache.current[src] = a;
+      }
+      if (cache.current[src]) {
+        cache.current[src]!.currentTime = 0;
+        cache.current[src]!.play?.().catch(() => {});
+      }
+    } catch {}
   };
-  return {
-    play(name: "success" | "partial" | "streak") {
-      const a = getAudio(`/sfx/${name}`);
-      if (!a) return;
-      try {
-        a.currentTime = 0;
-        a.play().catch(() => {});
-      } catch {}
-    },
-  };
+  return { play };
 }
 
 export default function DietHabitCard({
@@ -83,7 +88,6 @@ export default function DietHabitCard({
   });
   const [recent, setRecent] = useState<LogDoc[]>([]);
   const [confettiKey, setConfettiKey] = useState(0);
-  const [tipOpen, setTipOpen] = useState(false); // collapsed by default on mobile
   const { play } = useSFX();
 
   useEffect(() => {
@@ -102,11 +106,10 @@ export default function DietHabitCard({
       const all = qs.docs.map((d) => d.data() as LogDoc);
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 30);
-      setRecent(
-        all
-          .filter((x) => new Date(x.localDate + "T00:00:00") >= cutoff)
-          .sort((a, b) => (a.localDate < b.localDate ? -1 : 1))
-      );
+      const keep = all
+        .filter((x) => new Date(x.localDate + "T00:00:00") >= cutoff)
+        .sort((a, b) => (a.localDate < b.localDate ? -1 : 1));
+      setRecent(keep);
     })();
   }, [habitId, today]);
 
@@ -133,36 +136,42 @@ export default function DietHabitCard({
       setConfettiKey((k) => k + 1);
       play("success");
       if (window?.navigator?.vibrate) window.navigator.vibrate(20);
-    } else if (state === "partial") play("partial");
+    } else if (state === "partial") {
+      play("partial");
+    }
   };
 
+  // Progress ring
   const todayScore = useMemo(() => {
-    const sum = MEALS.map((m) => toScore(todayMeals[m]))
-      .filter((v) => v >= 0)
-      .reduce((a, b) => a + b, 0);
-    return sum / MEALS.length || 0;
+    const vals = MEALS.map((m) => toScore(todayMeals[m]));
+    const valid = vals.filter((v) => v >= 0) as number[];
+    if (!valid.length) return 0;
+    const sum = valid.reduce<number>((a, b) => a + b, 0);
+    return sum / MEALS.length;
   }, [todayMeals]);
   const todayPct = Math.round(todayScore * 100);
 
+  // Streak
   const streak = useMemo(() => {
     const byDate = new Map<string, LogDoc>();
     recent.forEach((r) => byDate.set(r.localDate, r));
     byDate.set(today, { localDate: today, meals: todayMeals });
-    let c = 0;
+    let count = 0;
     for (let i = 0; i < 90; i++) {
       const t = new Date();
       t.setDate(t.getDate() - i);
       const key = ymd(t);
       const log = byDate.get(key);
       const sum = MEALS.map((m) => toScore(log?.meals?.[m]))
-        .filter((v) => v >= 0)
-        .reduce((a, b) => a + b, 0);
-      if (sum >= 1.5) c++;
+        .filter((v) => v >= 0) as number[];
+      const total = sum.reduce<number>((a, b) => a + b, 0);
+      if (total >= 1.5) count++;
       else break;
     }
-    return c;
+    return count;
   }, [recent, today, todayMeals]);
 
+  // Mini heatmaps
   const miniDays = useMemo(() => {
     const arr: string[] = [];
     const d = new Date();
@@ -233,7 +242,6 @@ export default function DietHabitCard({
 
   return (
     <Card className="bg-slate-900/70 border-slate-800 p-4 md:p-5 overflow-hidden relative">
-      {/* Confetti */}
       <div key={confettiKey} className="pointer-events-none absolute inset-0">
         {[...Array(12)].map((_, i) => (
           <span
@@ -254,23 +262,30 @@ export default function DietHabitCard({
       <div className="flex items-start gap-4">
         {/* Progress ring */}
         <div className="relative w-24 h-24 shrink-0">
-          <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100" aria-hidden>
+          <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r={R} stroke="rgb(30 41 59)" strokeWidth="12" fill="none" />
             <circle
-              cx="50" cy="50" r={R}
-              stroke="rgb(20 184 166)" strokeWidth="12" strokeLinecap="round" fill="none"
-              strokeDasharray={C} strokeDashoffset={dashOffset}
+              cx="50"
+              cy="50"
+              r={R}
+              stroke="rgb(20 184 166)"
+              strokeWidth="12"
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={C}
+              strokeDashoffset={dashOffset}
               style={{ transition: "stroke-dashoffset 300ms ease-out" }}
             />
           </svg>
-          <div className="absolute inset-0 grid place-items-center">
+          <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-xl font-bold">{todayPct}%</div>
+              <div className="text-xl font-bold">{Math.round(todayScore * 100)}%</div>
               <div className="text-[10px] text-slate-400 -mt-1">today</div>
             </div>
           </div>
         </div>
 
+        {/* Body */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-semibold">Eat healthy</h3>
@@ -278,60 +293,83 @@ export default function DietHabitCard({
               Streak {streak}d
             </span>
           </div>
-          <p className="text-slate-400 text-sm mt-1">
-            Tap your meals below—aim for “Yes” or “Partial”.
-          </p>
+          <p className="text-slate-400 text-sm mt-1">Tap your meals below—aim for “Yes” or “Partial”.</p>
 
-          {/* Meals: 1-col on mobile; 3-col ≥sm */}
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Meal selectors */}
+          <div className="mt-3 grid grid-cols-3 gap-2">
             {MEALS.map((m) => {
               const val = todayMeals[m];
-              const btn = (state: MealState, label: string, on: boolean, color: string) => (
-                <button
-                  className={`flex-1 text-sm px-3 py-2 rounded-lg border transition
-                    ${on ? `${color} border-current`
-                         : "bg-slate-900/60 border-slate-700 hover:border-slate-500"}`}
-                  onClick={() => setMeal(m, state)}
-                >
-                  {label}
-                </button>
-              );
+              const display = val
+                ? val === "yes"
+                  ? "Yes"
+                  : val === "partial"
+                  ? "Partial"
+                  : val === "no"
+                  ? "No"
+                  : "Skip"
+                : "Set";
               return (
                 <div key={m} className="rounded-xl border border-slate-800 bg-slate-950/60 p-2">
                   <div className="text-xs text-slate-400 capitalize">{m}</div>
                   <div className="mt-1 flex gap-1">
-                    {btn("yes", "Yes", val === "yes", "bg-emerald-500/20 text-emerald-300")}
-                    {btn("partial", "Partial", val === "partial", "bg-amber-500/20 text-amber-300")}
-                    {btn("no", "No", val === "no", "bg-rose-500/20 text-rose-300")}
+                    <button
+                      className={`flex-1 text-xs px-2 py-1 rounded-lg border ${
+                        val === "yes"
+                          ? "bg-emerald-500/20 border-emerald-400"
+                          : "bg-slate-900/60 border-slate-700 hover:border-slate-500"
+                      }`}
+                      onClick={() => setMeal(m, "yes")}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      className={`flex-1 text-xs px-2 py-1 rounded-lg border ${
+                        val === "partial"
+                          ? "bg-amber-500/20 border-amber-400"
+                          : "bg-slate-900/60 border-slate-700 hover:border-slate-500"
+                      }`}
+                      onClick={() => setMeal(m, "partial")}
+                    >
+                      Partial
+                    </button>
+                    <button
+                      className={`flex-1 text-xs px-2 py-1 rounded-lg border ${
+                        val === "no"
+                          ? "bg-rose-500/20 border-rose-400"
+                          : "bg-slate-900/60 border-slate-700 hover:border-slate-500"
+                      }`}
+                      onClick={() => setMeal(m, "no")}
+                    >
+                      No
+                    </button>
                   </div>
+                  <div className="mt-1 text-[11px] text-slate-400">{display}</div>
                 </div>
               );
             })}
           </div>
 
-          {/* Focus tip: collapsible on mobile */}
-          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60">
-            <button
-              className="w-full text-left px-3 py-2 text-sm flex items-center justify-between sm:cursor-default"
-              onClick={() => setTipOpen((s) => !s)}
-            >
-              <div>
-                <span className="text-slate-400">Focus next: </span>
-                <span className="font-semibold capitalize">{tip.focus}</span>
-              </div>
-              <span className="sm:hidden text-slate-400 text-xs">{tipOpen ? "Hide" : "Show"}</span>
-            </button>
-            <div className={`px-3 pb-3 ${tipOpen ? "" : "hidden sm:block"}`}>
-              <ul className="text-xs text-slate-300 space-y-1">
-                <li><b>Cue:</b> {tip.cue}</li>
-                <li><b>Action:</b> {tip.action}</li>
-                <li><b>Reward:</b> {tip.reward}</li>
-              </ul>
+          {/* Focus tip */}
+          <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="text-sm">
+              <span className="text-slate-400">Focus next:</span>{" "}
+              <span className="font-semibold capitalize">{tip.focus}</span>
             </div>
+            <ul className="mt-1 text-xs text-slate-300 space-y-1">
+              <li>
+                <b>Cue:</b> {tip.cue}
+              </li>
+              <li>
+                <b>Action:</b> {tip.action}
+              </li>
+              <li>
+                <b>Reward:</b> {tip.reward}
+              </li>
+            </ul>
           </div>
 
-          {/* Heatmaps: stack vertically on mobile */}
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {/* Mini heatmaps */}
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
             {MEALS.map((m) => (
               <div key={m}>
                 <div className="text-xs text-slate-400 capitalize mb-1">{m}</div>
@@ -352,14 +390,20 @@ export default function DietHabitCard({
           </div>
 
           {/* Footer */}
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <div className="flex-1">
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex-1 mr-3">
               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div className={`h-full ${barColor(todayPct)} transition-all`} style={{ width: `${todayPct}%` }} />
+                <div
+                  className={`h-full ${barColor(todayPct)} transition-all`}
+                  style={{ width: `${todayPct}%` }}
+                />
               </div>
               <div className="text-[11px] text-slate-400 mt-1">Daily progress</div>
             </div>
-            <Button onClick={onOpenTracker} className="bg-teal-500 hover:bg-teal-400 text-black">
+            <Button
+              onClick={onOpenTracker}
+              className="bg-teal-500 hover:bg-teal-400 text-black"
+            >
               Open tracker
             </Button>
           </div>
