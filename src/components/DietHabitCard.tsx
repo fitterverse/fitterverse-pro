@@ -13,11 +13,10 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { db } from "@/lib/firebase";
 
-// ------- Types / helpers -------
 type Meal = "breakfast" | "lunch" | "dinner";
 type MealState = "yes" | "partial" | "no" | "skip";
 type LogDoc = {
-  localDate: string; // YYYY-MM-DD
+  localDate: string;
   meals?: Partial<Record<Meal, MealState>>;
   ts?: number;
   done?: boolean;
@@ -35,7 +34,7 @@ function toScore(v?: MealState): 1 | 0.5 | 0 | -1 {
   if (v === "yes") return 1;
   if (v === "partial") return 0.5;
   if (v === "no") return 0;
-  return -1; // no data
+  return -1;
 }
 function barColor(pct: number) {
   if (pct >= 85) return "bg-emerald-500";
@@ -49,7 +48,7 @@ function heatColor(v: number) {
   return "bg-slate-700";
 }
 
-// ------- Sounds (optional; safe if files missing) -------
+// Sounds
 function useSFX() {
   const cache = useRef<{ [k: string]: HTMLAudioElement | null }>({});
   const play = (name: "success" | "partial" | "streak") => {
@@ -67,16 +66,13 @@ function useSFX() {
       }
       if (cache.current[src]) {
         cache.current[src]!.currentTime = 0;
-        cache.current[src]!.play().catch(() => {});
+        cache.current[src]!.play?.().catch(() => {});
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
   return { play };
 }
 
-// ------- Component -------
 export default function DietHabitCard({
   habitId,
   onOpenTracker,
@@ -90,11 +86,10 @@ export default function DietHabitCard({
     lunch: undefined,
     dinner: undefined,
   });
-  const [recent, setRecent] = useState<LogDoc[]>([]); // last 30 days
+  const [recent, setRecent] = useState<LogDoc[]>([]);
   const [confettiKey, setConfettiKey] = useState(0);
   const { play } = useSFX();
 
-  // Load today's meals + last 30 logs
   useEffect(() => {
     (async () => {
       const ref = doc(db, "user_habits", habitId, "logs", today);
@@ -118,9 +113,7 @@ export default function DietHabitCard({
     })();
   }, [habitId, today]);
 
-  // Write helper
   const setMeal = async (meal: Meal, state: MealState) => {
-    // Only allow today (matches your “last day only” guard)
     const ref = doc(db, "user_habits", habitId, "logs", today);
     const snap = await getDoc(ref);
     if (snap.exists()) {
@@ -137,10 +130,8 @@ export default function DietHabitCard({
         meals: { [meal]: state },
       });
     }
-    // Optimistic
     setTodayMeals((s) => ({ ...s, [meal]: state }));
 
-    // Feedback
     if (state === "yes") {
       setConfettiKey((k) => k + 1);
       play("success");
@@ -150,17 +141,17 @@ export default function DietHabitCard({
     }
   };
 
-  // Progress ring (denominator = 3 for intuitive % even if one meal blank)
+  // Progress ring
   const todayScore = useMemo(() => {
     const vals = MEALS.map((m) => toScore(todayMeals[m]));
-    const valid = vals.filter((v) => v >= 0);
+    const valid = vals.filter((v) => v >= 0) as number[];
     if (!valid.length) return 0;
     const sum = valid.reduce<number>((a, b) => a + b, 0);
     return sum / MEALS.length;
   }, [todayMeals]);
   const todayPct = Math.round(todayScore * 100);
 
-  // Streak = consecutive days with sum(yes=1, partial=0.5) >= 1.5 (half-day)
+  // Streak
   const streak = useMemo(() => {
     const byDate = new Map<string, LogDoc>();
     recent.forEach((r) => byDate.set(r.localDate, r));
@@ -172,15 +163,15 @@ export default function DietHabitCard({
       const key = ymd(t);
       const log = byDate.get(key);
       const sum = MEALS.map((m) => toScore(log?.meals?.[m]))
-        .filter((v) => v >= 0)
-        .reduce<number>((a, b) => a + b, 0);
-      if (sum >= 1.5) count++;
+        .filter((v) => v >= 0) as number[];
+      const total = sum.reduce<number>((a, b) => a + b, 0);
+      if (total >= 1.5) count++;
       else break;
     }
     return count;
   }, [recent, today, todayMeals]);
 
-  // Mini heatmaps (7 days × 3 meals)
+  // Mini heatmaps
   const miniDays = useMemo(() => {
     const arr: string[] = [];
     const d = new Date();
@@ -198,7 +189,6 @@ export default function DietHabitCard({
     return map;
   }, [recent, today, todayMeals]);
 
-  // Focus next (weakest meal over last 14 days)
   const tip = useMemo(() => {
     const start = new Date();
     start.setDate(start.getDate() - 13);
@@ -246,14 +236,12 @@ export default function DietHabitCard({
     return { focus: worst, ...library[worst] };
   }, [byDate]);
 
-  // Ring SVG
   const R = 42;
   const C = 2 * Math.PI * R;
   const dashOffset = (1 - todayScore) * C;
 
   return (
     <Card className="bg-slate-900/70 border-slate-800 p-4 md:p-5 overflow-hidden relative">
-      {/* Confetti burst: fast, lightweight */}
       <div key={confettiKey} className="pointer-events-none absolute inset-0">
         {[...Array(12)].map((_, i) => (
           <span
@@ -291,7 +279,7 @@ export default function DietHabitCard({
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-xl font-bold">{todayPct}%</div>
+              <div className="text-xl font-bold">{Math.round(todayScore * 100)}%</div>
               <div className="text-[10px] text-slate-400 -mt-1">today</div>
             </div>
           </div>
@@ -401,7 +389,7 @@ export default function DietHabitCard({
             ))}
           </div>
 
-          {/* Footer: progress + open tracker */}
+          {/* Footer */}
           <div className="mt-4 flex items-center justify-between">
             <div className="flex-1 mr-3">
               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
@@ -422,7 +410,6 @@ export default function DietHabitCard({
         </div>
       </div>
 
-      {/* Confetti + small tile animation */}
       <style>{`
         @keyframes confetti-fly {
           0% { transform: translate(-50%,-50%) scale(1) rotate(0deg); opacity: 0.95; }

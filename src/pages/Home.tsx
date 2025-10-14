@@ -31,9 +31,8 @@ export default function Home() {
           content="Build lasting fitness with tiny daily actions, flexible streaks, weekly reviews, and gentle AI nudges. No guilt. Just momentum."
         />
         <link rel="canonical" href={CANON} />
-
-        {/* Preload hero image to keep it high priority without using fetchPriority */}
-        <link rel="preload" as="image" href={OG_IMAGE} imageSrcSet={OG_IMAGE} />
+        {/* safe preload (no non-typed attributes) */}
+        <link rel="preload" as="image" href={OG_IMAGE} />
 
         {/* Basic Open Graph */}
         <meta property="og:title" content="Fitterverse – Habit-first fitness" />
@@ -152,6 +151,7 @@ export default function Home() {
                   alt="Healthy habit routine—shoes, mat, and a simple plan"
                   className="h-72 w-full object-cover md:h-[420px]"
                   loading="eager"
+                  fetchpriority="high"
                   decoding="async"
                   width={1200}
                   height={800}

@@ -2,7 +2,6 @@
 import React from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
-// ⛔️ Removed MarketingNavbar import to avoid double nav
 import { getPost, getAllPosts } from "@/lib/content";
 import ArticleComments from "@/pages/blog/ArticleComments";
 import "@/styles/article.css";
@@ -144,6 +143,16 @@ export default function PostPage() {
     mainEntityOfPage: CANON,
   };
 
+  // ---- TS-safe hero image priority (imperative attribute) ----
+  const heroRef = React.useRef<HTMLImageElement | null>(null);
+  React.useEffect(() => {
+    if (heroRef.current) {
+      try {
+        heroRef.current.setAttribute("fetchpriority", "high");
+      } catch {}
+    }
+  }, [post?.hero?.url]);
+
   return (
     <div className="min-h-screen article-shell">
       <Helmet prioritizeSeoTags>
@@ -191,12 +200,12 @@ export default function PostPage() {
             {post.hero?.url && (
               <figure style={{ marginTop: 16 }}>
                 <img
+                  ref={heroRef}
                   src={post.hero.url}
                   alt={post.hero.alt || post.title}
                   width={post.hero.width || 1200}
                   height={post.hero.height || 800}
                   loading="eager"
-                  {...{ fetchpriority: "high" }}  // TS-safe way to set the non-typed attribute
                   decoding="async"
                 />
                 {post.hero.alt && <figcaption>{post.hero.alt}</figcaption>}
