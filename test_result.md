@@ -285,12 +285,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Gemini AI meal image analysis integration"
-    - "Meal logging and retrieval endpoints"
-    - "Step tracking endpoints"
-    - "Workout tracking endpoints"
-    - "Habit and streak management endpoints"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
