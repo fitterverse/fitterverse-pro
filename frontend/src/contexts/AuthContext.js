@@ -42,6 +42,33 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const signUpWithEmail = async (email, password, displayName) => {
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      // Create initial profile
+      await setDoc(doc(db, 'user_profiles', result.user.uid), {
+        email: email,
+        displayName: displayName || email.split('@')[0],
+        createdAt: serverTimestamp(),
+        onboardingCompleted: false
+      });
+      return result.user;
+    } catch (error) {
+      console.error('Email signup error:', error);
+      throw error;
+    }
+  };
+
+  const signInWithEmail = async (email, password) => {
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      return result.user;
+    } catch (error) {
+      console.error('Email sign-in error:', error);
+      throw error;
+    }
+  };
+
   const setupRecaptcha = (phoneNumber) => {
     const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
       size: 'invisible',
