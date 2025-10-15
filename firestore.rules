@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User profiles - users can only read/write their own profile
+    match /user_profiles/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User habits - users can only access their own habits
+    match /user_habits/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Meal logs - users can only access their own meals
+    match /meal_logs/{mealId} {
+      allow read, write: if request.auth != null && 
+                            request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && 
+                       request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Step logs - users can only access their own steps
+    match /step_logs/{stepId} {
+      allow read, write: if request.auth != null && 
+                            request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && 
+                       request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Workout logs - users can only access their own workouts
+    match /workout_logs/{workoutId} {
+      allow read, write: if request.auth != null && 
+                            request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && 
+                       request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Streak data - users can only access their own streaks
+    match /streaks/{streakId} {
+      allow read, write: if request.auth != null && 
+                            request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && 
+                       request.auth.uid == request.resource.data.userId;
+    }
+  }
+}
