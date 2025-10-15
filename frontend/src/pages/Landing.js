@@ -27,7 +27,7 @@ const Landing = () => {
       await signInWithGoogle();
       navigate('/onboarding');
     } catch (error) {
-      setError('Failed to sign in with Google');
+      setError(error.message || 'Failed to sign in with Google. Please try email signup.');
       console.error(error);
     } finally {
       setLoading(false);
@@ -41,7 +41,47 @@ const Landing = () => {
       await signInWithApple();
       navigate('/onboarding');
     } catch (error) {
-      setError('Failed to sign in with Apple');
+      setError(error.message || 'Failed to sign in with Apple. Please try email signup.');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailAuth = async (e) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      
+      if (authMode === 'signup') {
+        if (password.length < 6) {
+          setError('Password must be at least 6 characters');
+          return;
+        }
+        await signUpWithEmail(email, password, name);
+      } else {
+        await signInWithEmail(email, password);
+      }
+      
+      navigate('/onboarding');
+    } catch (error) {
+      if (error.code === 'auth/email-already-in-use') {
+        setError('Email already in use. Try signing in instead.');
+      } else if (error.code === 'auth/wrong-password') {
+        setError('Incorrect password');
+      } else if (error.code === 'auth/user-not-found') {
+        setError('No account found. Please sign up first.');
+      } else if (error.code === 'auth/invalid-email') {
+        setError('Invalid email address');
+      } else {
+        setError(error.message || 'Authentication failed. Please try again.');
+      }
       console.error(error);
     } finally {
       setLoading(false);
