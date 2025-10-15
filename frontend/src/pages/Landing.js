@@ -5,10 +5,14 @@ import { Activity, Target, TrendingUp, Flame } from 'lucide-react';
 
 const Landing = () => {
   const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState('signin'); // 'signin' or 'signup'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const navigate = useNavigate();
-  const { signInWithGoogle, signInWithApple, currentUser } = useAuth();
+  const { signInWithGoogle, signInWithApple, signUpWithEmail, signInWithEmail, currentUser } = useAuth();
 
   React.useEffect(() => {
     if (currentUser) {
