@@ -128,6 +128,8 @@ export function AuthProvider({ children }) {
     userProfile,
     signInWithGoogle,
     signInWithApple,
+    signUpWithEmail,
+    signInWithEmail,
     setupRecaptcha,
     signOut,
     getUserProfile,
