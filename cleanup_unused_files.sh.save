@@ -1,0 +1,27 @@
+#!/bin/bash
+set -e
+
+mkdir -p _archive/components _archive/pages _archive/lib _archive/state _archive/types _archive/scripts
+
+echo "Archiving unused components..."
+mv src/components/{AdaptiveBanner.tsx,DailyChecklist.tsx,DashboardCards.tsx,Footer.tsx,SEOHead.tsx,Stepper.tsx,WalkingHabitCard.tsx,WorkoutHabitCard.tsx,seo,ui/NudgeChip.tsx} _archive/components/ 2>/dev/null || true
+
+echo "Archiving unused pages..."
+mv src/pages/{faq.tsx} _archive/pages/ 2>/dev/null || true
+mv src/pages/blog/{BlogIndex.tsx} _archive/pages/ 2>/dev/null || true
+mv src/pages/habits/{HabitDashboard.tsx,NudgeBanner.tsx,PhaseTimeline.tsx,StreakChain.tsx,TodayCard.tsx,WeeklyQuotaRing.tsx} _archive/pages/ 2>/dev/null || true
+mv src/pages/policies/{CancellationRefund.tsx,ContactUs.tsx,PrivacyPolicy.tsx,ShippingPolicy.tsx,TermsAndConditions.tsx} _archive/pages/ 2>/dev/null || true
+
+echo "Archiving unused libs..."
+mv src/lib/{adaptive.ts,analytics.ts,foodcontent.ts,habits.ts,notifications.ts,nudges.ts,order.tsx,profile.ts,sfx.ts,smartNav.ts,stats.tsx,storage.ts,strings.ts,time.ts} _archive/lib/ 2>/dev/null || true
+
+echo "Archiving unused state/types/scripts..."
+mv src/state/{habitStore.ts} _archive/state/ 2>/dev/null || true
+mv src/types/{habits.ts,json.d.ts} _archive/types/ 2>/dev/null || true
+mv scripts/{backfill-createdAt.ts,generate-sitemap.ts} _archive/scripts/ 2>/dev/null || true
+mv src/AppShell.tsx src/content/index.ts _archive/ 2>/dev/null || true
+
+echo "✅ Cleanup complete! All unused files moved to ./_archive/"
+echo "➡️  You can safely review them and delete after confirming nothing breaks."
+
+
